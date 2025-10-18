@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect} from 'react';
 
 export default function Chatbot() {
+  const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:6767'
     const [messages, setMessages] = useState([ 
         {role: 'bot', content: "Hello, I'm Aristotle, your learning assistant. What topics would you like to learn about?"} 
     ]);
@@ -31,7 +32,7 @@ export default function Chatbot() {
         setIsTyping(true);
 
         try {
-            const response = await fetch('/api/chatbot', {
+            const response = await fetch(`${backendBase}/api/chatbot`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -66,7 +67,7 @@ export default function Chatbot() {
             formData.append('userData', JSON.stringify(userData));
         
             try {
-              const response = await fetch('/api/upload-material', {
+              const response = await fetch(`${backendBase}/api/upload-material`, {
                 method: 'POST',
                 body: formData
               });
