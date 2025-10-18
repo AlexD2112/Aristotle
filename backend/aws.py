@@ -1,10 +1,20 @@
 import boto3
+import io
 import os
 import json
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 AWS_REGION = "us-east-1"
+
+def save_to_s3(data: any, key: str,):
+    try:
+        jsonFile = json.dumps(data)
+        s3_client = boto3.client("s3",region_name=AWS_REGION)
+        body = io.BytesIO(jsonFile.encode("utf-8"))
+        s3_client.put_object(Bucket="question-bank-aristotle", Key=key, Body=body.getvalue())
+    except Exception as e:
+        return f"ERROR: {e}"
 
 def generate_mcq(num_questions : int, input_file= "", prompt = ""):
     load_dotenv()
@@ -55,8 +65,7 @@ def generate_mcq(num_questions : int, input_file= "", prompt = ""):
         response = client.invoke_model(modelId=model_id, body=request)
 
     except (ClientError, Exception) as e:
-        print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
-        exit(1)
+        return e.response
 
     # Decode the response body.
     model_response = json.loads(response["body"].read())
@@ -68,7 +77,7 @@ def generate_mcq(num_questions : int, input_file= "", prompt = ""):
 
 def main():
     n = int(input("Enter the number of questions you want to use: "))
-    generate_mcq(n, input_file="Lecture_notes.txt")
+    print(generate_mcq(n, input_file="Lecture_notes.txt"))
 
 if __name__ == "__main__":
     main()

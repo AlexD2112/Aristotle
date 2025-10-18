@@ -1,5 +1,6 @@
-import bedrock
+import aws
 import boto3
+import io
 import os
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
@@ -32,10 +33,20 @@ def generate_mcq():
     try:
         num_questions = int(request.headers.get("X-Num-Questions"))
         topic = request.headers.get("X-Topic")
-        return jsonify(bedrock.generate_mcq(num_questions,prompt=topic)), 200
+        return jsonify(aws.generate_mcq(num_questions,prompt=topic)), 200
     # This code is unsafe, remove for prod
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/save", methods=["POST"])
+def save():
+    try:
+        key = request.headers.get("X-Key")
+        data = request.get_json()
+        aws.save_to_s3(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     # Development server
