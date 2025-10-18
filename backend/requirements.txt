@@ -4,3 +4,4 @@ python-dotenv
 flask-cors
 moto
 pytest
+langchain-aws
