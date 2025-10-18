@@ -1,9 +1,11 @@
 import {useEffect, useState} from 'react'
+import Chatbot from '../components/chatbot'
 
 export default function Home() {
   const [buckets, setBuckets] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showChatbot, setShowChatbot] = useState(false)
 
   useEffect(() => {
     const fetchBuckets = async () => {
@@ -27,6 +29,7 @@ export default function Home() {
       <h1>Aristotle — Next.js frontend</h1>
       <p>Calls the Flask backend at <code>/api/aws/buckets</code> and shows result.</p>
 
+      {/* AWS Buckets Section */}
       {loading && <p>Loading...</p>}
       {error && (
         <div style={{color: 'crimson'}}>
@@ -49,6 +52,40 @@ export default function Home() {
           )}
         </div>
       )}
+      
+      <div style={{marginTop: '40px', borderTop: '2px solid #eee', paddingTop: '20px'}}>
+        <h2>Learning Assistant</h2>
+        <p>Chat with Aristotle to discuss topics and upload study materials.</p>
+        
+        <div style={{marginBottom: '20px'}}>
+          <button 
+            onClick={() => setShowChatbot(!showChatbot)}
+            style={{
+              padding: '10px 20px',
+              fontSize: '16px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer'
+            }}
+          >
+            {showChatbot ? 'Hide' : 'Start'} Learning Chatbot
+          </button>
+        </div>
+
+        {showChatbot && (
+          <div style={{
+            border: '1px solid #ddd',
+            borderRadius: '10px',
+            padding: '20px',
+            maxWidth: '600px',
+            margin: '0 auto'
+          }}>
+            <Chatbot />
+          </div>
+        )}
+      </div>
     </main>
   )
 }
