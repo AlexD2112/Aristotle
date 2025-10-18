@@ -4,7 +4,7 @@ This workspace contains a minimal Next.js frontend and a Flask backend that demo
 
 Project layout:
 
-- frontend/ — Next.js app (calls backend at http://localhost:5000/api/aws/buckets)
+- frontend/ — Next.js app (calls backend at http://localhost:6767/api/aws/buckets)
 - backend/ — Flask app exposing an endpoint to list S3 buckets
 - backend/.env.example, frontend/.env.example — per-service env templates (do NOT commit real `.env` files)
 
@@ -33,7 +33,7 @@ python -m venv .venv
 # install backend deps
 pip install -r requirements.txt
 
-# Create a local backend/.env from the example and edit it (do NOT commit backend/.env)
+# FIRST TIME: Create a local backend/.env from the example and edit it (do NOT commit backend/.env)
 Copy-Item .\.env.example .\.env
 notepad .\.env   # set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (or leave blank to use aws CLI / IAM)
 
@@ -56,7 +56,7 @@ cd frontend
 # Optional: create frontend/.env from the example for a persistent local override.
 # If you want to change the backend URL without editing code, set NEXT_PUBLIC_BACKEND_URL.
 Copy-Item .\.env.example .\.env
-notepad .\.env   # set NEXT_PUBLIC_BACKEND_URL if needed (e.g. http://localhost:5000)
+notepad .\.env   # set NEXT_PUBLIC_BACKEND_URL if needed (e.g. http://localhost:6767)
 
 # install dependencies
 npm install
@@ -69,7 +69,7 @@ Then open http://localhost:3000 to view the frontend.
 
 Notes:
 - For Next.js, public env vars must be prefixed with `NEXT_PUBLIC_` to be available in browser code. Restart the dev server after changing `frontend/.env`.
-- The frontend falls back to `http://localhost:5000` if `NEXT_PUBLIC_BACKEND_URL` is not set.
+- The frontend falls back to `http://localhost:6767` if `NEXT_PUBLIC_BACKEND_URL` is not set.
 
 
 ### Local test (no AWS required)
@@ -95,7 +95,7 @@ See `backend/.env.example` and `frontend/.env.example` for templates of required
 ## Troubleshooting
 
 - If you get AWS auth errors, ensure credentials are set via environment variables, `aws configure`, or an IAM role when running in AWS.
-- If the frontend can't reach the backend, ensure the backend is running on port 5000 and check Windows Firewall rules.
+- If the frontend can't reach the backend, ensure the backend is running on port 6767 and check Windows Firewall rules.
 - CORS: the backend enables CORS for local dev. For production, restrict origins.
 - Windows PowerShell: use `Activate.ps1` to activate venv. If execution policy blocks scripts, run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` as admin.
 

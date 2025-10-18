@@ -7,7 +7,7 @@ export default function Home() {
 
   useEffect(() => {
     const fetchBuckets = async () => {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:6767'
       try {
         const res = await fetch(`${backendUrl}/api/aws/buckets`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
