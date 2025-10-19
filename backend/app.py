@@ -75,7 +75,7 @@ def generate_desc():
         app.logger.info(f"Generating description for prompt: {prompt}")
         return jsonify({"description":bedrock.generate_desc(prompt=prompt)}),200
     except Exception as e:
-        return jsonify({"error": e}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/generate_mcq', methods=["GET", "POST"])
 def generate_mcq():

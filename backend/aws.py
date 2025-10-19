@@ -1,10 +1,8 @@
 import boto3
-import io
 import os
 import json
-import random
-import string
 import uuid
+from typing import Any, Optional
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv, find_dotenv
 
@@ -17,7 +15,7 @@ if dotenv_path:
 else:
     print("No .env file found (falling back to shell environment / instance role)")
 
-def save_to_s3(data: any, filename: str = None, bucket_name: str = None, key: str = None):
+def save_to_s3(data: Any, filename: Optional[str] = None, bucket_name: Optional[str] = None, key: Optional[str] = None):
     """Save JSON-serializable `data` to S3.
 
     Parameters:
@@ -99,6 +97,63 @@ class Bedrock:
                 print(str(e))
             return prompt
 
+
+    #Parse response. Takes self, an input block of text, and an array of arrays. Each element in the
+    #Array is a triple containing a name, a description, and a type of each expected return val
+    #Returns a json parsed with nova-micro of the response
+    def parse_response(self, input_text: str, expected_output: list):
+        prompt = f"""Based on the following input text, extract the relevant information and return it in JSON format with the following fields: {', '.join([f'{name} ({type_}) - {desc}' for name, desc, type_ in expected_output])}.
+        Input Text: {input_text}
+        Ensure that your response is in correct JSON format (INCLUDE NO EXTRA TEXT) as your output will be fed directly into code.
+        """
+
+        body = {
+            "inferenceConfig" : {
+                "maxTokens": 10000,
+                "temperature": 0.5,
+                "topP": 0.9
+            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+        }
+
+
+        # Convert the native request to JSON.
+        request = json.dumps(body)
+
+        try:
+            # Invoke the model with the request.
+            print(f"Invoking model {self.model_id} with body length={len(request)}")
+            response = self.client.invoke_model(modelId=self.model_id, body=request)
+
+        except (ClientError, Exception) as e:
+
+            # Surface full exception information for debugging
+            resp = getattr(e, 'response', None)
+            print("Bedrock invoke failed:")
+            try:
+                print(resp)
+            except Exception:
+                print(str(e))
+            # Return a structured error so callers can see details
+            return {'Error': resp.get('Error') if resp and isinstance(resp, dict) and 'Error' in resp else {'Message': str(e), 'Code': getattr(e, 'code', None)}, 'ResponseMetadata': resp.get('ResponseMetadata') if resp and isinstance(resp, dict) and 'ResponseMetadata' in resp else None, 'message': str(e)}
+
+        # Decode the response body.
+        model_response = json.loads(response["body"].read())
+
+        # Extract and print the response text.
+        text = model_response["output"]["message"]["content"][0]["text"]
+
+        try:
+            parsed = json.loads(text)
+            return parsed
+        except Exception:
+            # fallback: return raw text (client can handle it) or split into lines
+            return {"raw": text}
 
     def generate_mcq(self, num_questions : int, input_file= "", prompt = ""):
         
