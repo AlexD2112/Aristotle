@@ -64,7 +64,7 @@ def debug_identity():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/generate_mcq', methods=["GET"])
+@app.route('/api/generate_mcq', methods=["GET", "POST"])
 def generate_mcq():
     try:
         # Support POST with JSON body for better client semantics, fall back to headers for GET
@@ -77,18 +77,51 @@ def generate_mcq():
             topic = request.headers.get("X-Topic")
 
         result = aws.generate_mcq(num_questions, prompt=topic)
-        # If aws.generate_mcq returns an error dict, pass it through
+
+        # If aws returned an error dict, surface it
         if isinstance(result, dict) and result.get('Error'):
             return jsonify(result), 500
-        return jsonify(result), 200
+
+        # If aws returned the mock shape {'output': [...]}
+        if isinstance(result, dict) and result.get('output') and isinstance(result.get('output'), list):
+            return jsonify({ 'questions': result.get('output') }), 200
+
+        # If aws returned a string (model text), try to parse JSON
+        if isinstance(result, str):
+            try:
+                parsed = json.loads(result)
+                if isinstance(parsed, list):
+                    return jsonify({ 'questions': parsed }), 200
+                if isinstance(parsed, dict) and parsed.get('questions'):
+                    return jsonify({ 'questions': parsed.get('questions') }), 200
+                if isinstance(parsed, dict):
+                    return jsonify({ 'questions': [parsed] }), 200
+            except Exception:
+                # fallback: split into non-empty lines
+                lines = [l.strip() for l in result.split('\n') if l.strip()]
+                if lines:
+                    return jsonify({ 'questions': lines }), 200
+            # final fallback: return raw text
+            return jsonify({ 'raw': result }), 200
+
+        # If aws returned a dict we didn't explicitly handle, return it under 'raw'
+        return jsonify({ 'raw': result }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/save", methods=["POST"])
 def save():
     try:
-        data = request.get_json()
-        return  aws.save_to_s3(data)
+        data = request.get_json(silent=True) or {}
+        # Accept optional filename and key from header or JSON body
+        key = request.headers.get("X-Key") or data.get('key')
+        filename = data.get('filename') or data.get('name')
+
+        # Call aws.save_to_s3 with filename/key if provided. aws.save_to_s3 will generate a key if None.
+        result = aws.save_to_s3(data, filename=filename, key=key)
+        if isinstance(result, dict) and result.get('ok'):
+            return jsonify({ 'ok': True, 'key': result.get('key'), 'bucket': result.get('bucket') }), 200
+        return jsonify({ 'error': result }), 500
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -4,6 +4,7 @@ import os
 import json
 import random
 import string
+import uuid
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv, find_dotenv
 
@@ -16,26 +17,46 @@ if dotenv_path:
 else:
     print("No .env file found (falling back to shell environment / instance role)")
 
-def save_to_s3(data: any):
+def save_to_s3(data: any, filename: str = None, bucket_name: str = None, key: str = None):
+    """Save JSON-serializable `data` to S3.
+
+    Parameters:
+      - data: object to save (will be json.dumps)
+      - filename: optional friendly filename to include in ContentDisposition and metadata
+      - bucket_name: optional S3 bucket (falls back to QUESTIONBANK_BUCKET env or default)
+      - key: optional explicit S3 key. If not provided one will be generated under questionbank/
+
+    Returns: { ok: True, key: <s3-key>, bucket: <bucket> } or { ok: False, error: msg }
+    """
     try:
-        
-        jsonFile = json.dumps(data)
-        s3_client = boto3.client("s3",region_name=AWS_REGION)
-        valid_key = False
-        while not valid_key:
-            key = ''.join(random.choices(string.ascii_letters, k=16))
-            try:
-                s3_client.head_object(Bucket="questionbankaristotle",Key=key)
-            except ClientError as e:
-                if e.response['Error']['Code'] == "404":
-                    valid_key = True
-                else:
-                    return f"ERROR: {e}"
-        body = io.BytesIO(jsonFile.encode("utf-8"))
-        s3_client.put_object(Bucket="questionbankaristotle", Key=key, Body=body.getvalue())
-        return {"ok": True, "key": key}
+        bucket = bucket_name or os.getenv('QUESTIONBANK_BUCKET', 'questionbankaristotle')
+        json_text = json.dumps(data, ensure_ascii=False, indent=2)
+        s3_client = boto3.client('s3', region_name=AWS_REGION)
+
+        if not key:
+            # Use a readable prefix and a uuid4-based filename for easy lookup and low chance of collision
+            key = f"questionbank/questions-{uuid.uuid4().hex}.json"
+
+        # Provide a ContentDisposition so browsers download a friendly filename when appropriate
+        content_disposition = None
+        if filename:
+            # sanitize filename minimally
+            safe_fn = ''.join(c for c in filename if c.isalnum() or c in (' ', '.', '-', '_')).strip()
+            content_disposition = f'attachment; filename="{safe_fn}"'
+
+        put_args = {
+            'Bucket': bucket,
+            'Key': key,
+            'Body': json_text.encode('utf-8'),
+            'ContentType': 'application/json'
+        }
+        if content_disposition:
+            put_args['ContentDisposition'] = content_disposition
+
+        s3_client.put_object(**put_args)
+        return {'ok': True, 'key': key, 'bucket': bucket}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {'ok': False, 'error': str(e)}
 
 def generate_mcq(num_questions : int, input_file= "", prompt = ""):
     load_dotenv()
@@ -120,7 +141,19 @@ def generate_mcq(num_questions : int, input_file= "", prompt = ""):
     model_response = json.loads(response["body"].read())
 
     # Extract and print the response text.
-    return model_response["output"]["message"]["content"][0]["text"]
+    text = model_response["output"]["message"]["content"][0]["text"]
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return {"questions": parsed}
+        if isinstance(parsed, dict) and parsed.get("questions"):
+            return {"questions": parsed["questions"]}
+        # if dict but not the expected shape, return it as-is
+        return parsed
+    except Exception:
+        # fallback: return raw text (client can handle it) or split into lines
+        return {"raw": text}
     
 
 
