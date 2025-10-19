@@ -5,7 +5,11 @@ import requests, json
 #     headers={"X-Num-Questions": "3", "X-Topic" : "Seattle Mariners"}
 # ).content)
 # print(json_to_save)
-json_to_save = """[
+json_to_save = {
+    "name": "Seattle Mariners",
+    "description": "A test on the best team in the MLB!",
+    "key": "QKqIZVAugxtArqXU",
+    "questions": [
     {
     "type": "multiple-choice",
     "question": "Which player hit the most home runs for the Seattle Mariners in 2021?",
@@ -27,10 +31,19 @@ json_to_save = """[
     "answer": [2],
     "explanation": "The correct answer is C because Julio Rodríguez won the American League MVP in 2021 while playing for the Seattle Mariners."
     }
-]"""
+    ]
+}
+topic = input("What topic would you like questions on? ")
+
+jsonn = requests.get(
+    "http://127.0.0.1:6767/api/generate_mcq",
+    headers={"X-Num-Questions":"3","X-Topic":topic}
+).content
+
+
 a = requests.post(
     "http://127.0.0.1:6767/api/save",
-    data=json_to_save,
+    data=json.loads(jsonn),
     headers={"Content-Type":"application/json"}
 )
 print(a.content)
