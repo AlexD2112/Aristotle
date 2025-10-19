@@ -7,7 +7,8 @@ export default function Home() {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showChatbot, setShowChatbot] = useState(false)
-
+  const [quizId, setQuizId] = useState('') 
+  
   useEffect(() => {
     const fetchBuckets = async () => {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:6767'
@@ -24,6 +25,7 @@ export default function Home() {
     }
     fetchBuckets()
   }, [])
+
 
   return (
     <main className="main-container">
@@ -55,6 +57,17 @@ export default function Home() {
       )}
       <p>Quiz</p>
       <Link href="/quiz">Quiz test</Link>
+      <div style={{margin: '20px 0'}}>
+        <input 
+          type="text" 
+          placeholder="Enter quiz ID"
+          onChange={(e) => setQuizId(e.target.value)}
+          style={{padding: '8px', marginRight: '10px'}}
+        />
+        <Link href={`/quiz?id=${quizId}`}>
+          <button style={{padding: '8px 16px'}}>Go to Quiz</button>
+        </Link>
+      </div>
       <div style={{marginTop: '40px', borderTop: '2px solid #eee', paddingTop: '20px'}}>
         <h2>Learning Assistant</h2>
         <p>Chat with Aristotle to discuss topics and upload study materials.</p>
