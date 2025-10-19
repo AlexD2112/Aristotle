@@ -5,3 +5,4 @@ flask-cors
 moto
 pytest
 langchain-aws
+PyPDF2

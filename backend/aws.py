@@ -115,16 +115,18 @@ class Bedrock:
                 print(str(e))
             return prompt
 
-
-    #Parse response. Takes self, an input block of text, and an array of arrays. Each element in the
-    #Array is a triple containing a name, a description, and a type of each expected return val
-    #Returns a json parsed with nova-micro of the response
-    def parse_response(self, input_text: str, expected_output: list):
-        prompt = f"""Based on the following input text, extract the relevant information and return it in JSON format with the following fields: {', '.join([f'{name} ({type_}) - {desc}' for name, desc, type_ in expected_output])}.
-        Input Text: {input_text}
-        Ensure that your response is in correct JSON format (INCLUDE NO EXTRA TEXT) as your output will be fed directly into code.
+    def generate_reply(self, input_text: str, mandatory_empty_values: list, one_of_empty_values: list):
+        # Paired with parse_response, this generates a reply prompt based on missing output values and the input text.
+        # Goal is to be friendly and helpful and respond, but keep in mind that before generating all mandatory_empty_values need to be filled
+        # and at least one of the one_of_empty_values needs to be filled.
+        prompt = f"""Based on the following input text, please respond in a friendly and helpful answer to the user.
+        Input Text from User: {input_text}
+        The following fields are missing and need to be filled in by them in a future message:
+        Mandatory fields: {', '.join(mandatory_empty_values) if len(mandatory_empty_values) > 0 else 'None'}
+        Optional fields (at least one required): {', '.join(one_of_empty_values) if len(one_of_empty_values) > 0 else 'None'}
+        Please respond in a way that encourages the user to provide the missing information, while acting friendly, helpful and human. 
+        Do not tell the user what the mandatory and optional fields are in a list format! Merely conversationally indicate what is necesary in an intuitive manner.
         """
-
         body = {
             "inferenceConfig" : {
                 "maxTokens": 10000,
@@ -138,18 +140,11 @@ class Bedrock:
                 }
             ],
         }
-
-
-        # Convert the native request to JSON.
-        request = json.dumps(body)
-
         try:
             # Invoke the model with the request.
-            print(f"Invoking model {self.model_id} with body length={len(request)}")
-            response = self.client.invoke_model(modelId=self.model_id, body=request)
-
+            print(f"Invoking model {self.model_id} with body length={len(json.dumps(body))}")
+            response = self.client.invoke_model(modelId=self.model_id, body=json.dumps(body))
         except (ClientError, Exception) as e:
-
             # Surface full exception information for debugging
             resp = getattr(e, 'response', None)
             print("Bedrock invoke failed:")
@@ -159,19 +154,94 @@ class Bedrock:
                 print(str(e))
             # Return a structured error so callers can see details
             return {'Error': resp.get('Error') if resp and isinstance(resp, dict) and 'Error' in resp else {'Message': str(e), 'Code': getattr(e, 'code', None)}, 'ResponseMetadata': resp.get('ResponseMetadata') if resp and isinstance(resp, dict) and 'ResponseMetadata' in resp else None, 'message': str(e)}
-
         # Decode the response body.
         model_response = json.loads(response["body"].read())
-
         # Extract and print the response text.
         text = model_response["output"]["message"]["content"][0]["text"]
+        return text
+
+
+    #Parse response. Takes self, an input block of text, and an array of arrays. Each element in the
+    #Array is a triple containing a name, a description, and a type of each expected return val
+    #Returns a json parsed with nova-micro of the response
+    def parse_response(self, input_text: str, expected_output: list):
+        # Build field specs and a human-friendly fields description
+        field_specs = []
+        for item in expected_output:
+            if not isinstance(item, (list, tuple)) or len(item) < 1:
+                continue
+            name = item[0]
+            # len >= 3: (name, desc, type), else try to infer or default to string
+            type_ = item[2] if len(item) > 2 else (item[1] if len(item) > 1 else "string")
+            field_specs.append((name, str(type_).lower()))
+
+        fields_desc = ', '.join([f"{n} ({t})" for n, t in field_specs])
+
+        prompt = (
+            f"Based on the following input text, extract the relevant information and return it in JSON format "
+            f"with the following fields: {fields_desc}.\n\n"
+            f"Important requirements:\n"
+            f"- Include every field listed above as a top-level key in the JSON output.\n"
+            f"- If you cannot determine a value for a field, use the most relevant null-like value for its type "
+            f"(for example: empty string for text, empty array for lists, empty object for objects, or JSON null for numbers/booleans).\n"
+            f"- Do NOT include any additional keys — the output must contain only the fields listed above.\n"
+            f"- Output must be valid JSON and contain ONLY the JSON object (no explanatory text).\n\n"
+            f"Input Text from User: {input_text}\n"
+        )
+
+        body = {
+            "inferenceConfig": {"maxTokens": 10000, "temperature": 0.5, "topP": 0.9},
+            "messages": [{"role": "user", "content": [{"text": prompt}]}],
+        }
+
+        request = json.dumps(body)
+        try:
+            print(f"Invoking model {self.model_id} with body length={len(request)}")
+            response = self.client.invoke_model(modelId=self.model_id, body=request)
+        except (ClientError, Exception) as e:
+            resp = getattr(e, "response", None)
+            print("Bedrock invoke failed:")
+            try:
+                print(resp)
+            except Exception:
+                print(str(e))
+            return {"Error": resp.get("Error") if resp and isinstance(resp, dict) and "Error" in resp else {"Message": str(e), "Code": getattr(e, "code", None)}, "ResponseMetadata": resp.get("ResponseMetadata") if resp and isinstance(resp, dict) and "ResponseMetadata" in resp else None, "message": str(e)}
+
+        model_response = json.loads(response["body"].read())
+        text = model_response["output"]["message"]["content"][0]["text"]
+
+        def default_for_type(type_str: str):
+            t = type_str.lower()
+            if "array" in t or "list" in t or t.endswith("[]"):
+                return []
+            if t in ("object", "dict", "map"):
+                return {}
+            if t in ("int", "integer", "number", "float", "double", "numeric"):
+                return None
+            if t in ("bool", "boolean"):
+                return None
+            # fallback to empty string for text-like types
+            return ""
 
         try:
             parsed = json.loads(text)
-            return parsed
+            if not isinstance(parsed, dict):
+                # keep the raw output so frontend can inspect; don't fabricate fields
+                return {"raw": text}
+
+            # Build result only with expected fields, applying type-appropriate defaults when missing/null
+            result = {}
+            for name, type_ in field_specs:
+                if name in parsed and parsed[name] is not None:
+                    result[name] = parsed[name]
+                else:
+                    result[name] = default_for_type(type_)
+
+            return result
         except Exception:
-            # fallback: return raw text (client can handle it) or split into lines
+            # Fallback: return raw text so caller can inspect
             return {"raw": text}
+
 
     def generate_mcq(self, num_questions : int, input_file= "", prompt = ""):
         

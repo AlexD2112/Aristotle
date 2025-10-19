@@ -1,7 +1,7 @@
 import aws
 import boto3
-import io
 import os
+import PyPDF2
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, request, jsonify
@@ -73,6 +73,35 @@ def debug_identity():
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/parse_response', methods=['POST'])
+def parse_response():
+    # Use AWSParse response. Takes self, an input block of text, and an array of arrays. Each element in the
+    # Array is a triple containing a name, a description, and a type of each expected return val
+    # Returns a json parsed with nova-micro of the response
+    try:
+        global bedrock
+        if bedrock is None:
+            bedrock = aws.Bedrock()
+
+        data = request.get_json(silent=True) or {}
+        input_text = data.get('input_text', '')
+        expected_output = data.get('expected_output', [])
+        app.logger.info(f"Parsing response for input_text: {input_text} with expected_output: {expected_output}")
+        parsed = bedrock.parse_response(input_text=input_text, expected_output=expected_output)
+
+        # If parse_response returned a raw fallback, forward it so frontend can inspect
+        if isinstance(parsed, dict) and parsed.get('raw'):
+            return jsonify({'raw': parsed.get('raw')}), 200
+
+        # If parsed is a dict containing the expected fields, return it directly.
+        if isinstance(parsed, dict):
+            return jsonify(parsed), 200
+
+        # For non-dict parsed values, wrap under `parsed` key to keep response JSON-safe
+        return jsonify({'parsed': parsed}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/generate_desc', methods=["GET"])
 def generate_desc():
@@ -333,18 +362,71 @@ def extract_file_content(file_path):
             with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
         elif file_path.endswith('.pdf'):
-            # You'll need to install PyPDF2: pip install PyPDF2
-            import PyPDF2
+
             with open(file_path, 'rb') as f:
                 reader = PyPDF2.PdfReader(f)
                 text = ""
                 for page in reader.pages:
-                    text += page.extract_text()
+                    p = page.extract_text()
+                    if p:
+                        text += p
                 return text
         # Add more file type handlers as needed
         return "File content extracted successfully"
     except Exception as e:
         return f"Error extracting content: {str(e)}"
+
+@app.route('/api/generate_reply', methods=['POST'])
+def generate_reply():
+    """Generate a friendly chat reply based on missing fields and the original input text.
+
+    Expected JSON body:
+      {
+        "input_text": "...",
+        "mandatory_empty_values": ["field1", "field2"],
+        "one_of_empty_values": ["optA", "optB"]
+      }
+
+    Returns: { "chat_response": "..." }
+    """
+    try:
+        global bedrock
+        if bedrock is None:
+            bedrock = aws.Bedrock()
+
+        data = request.get_json(silent=True) or {}
+        input_text = data.get('input_text', '')
+        mandatory = data.get('mandatory_empty_values', data.get('mandatory', [])) or []
+        one_of = data.get('one_of_empty_values', data.get('one_of', [])) or []
+
+        # Coerce to lists of strings
+        if not isinstance(mandatory, list):
+            mandatory = [mandatory]
+        if not isinstance(one_of, list):
+            one_of = [one_of]
+        mandatory = [str(x) for x in mandatory]
+        one_of = [str(x) for x in one_of]
+
+        app.logger.info(f"Generating chat reply for input_text (len={len(str(input_text))}) with mandatory={mandatory} one_of={one_of}")
+
+        resp = bedrock.generate_reply(input_text=input_text, mandatory_empty_values=mandatory, one_of_empty_values=one_of)
+
+        # bedrock.generate_reply returns a string on success or a dict with Error on failure
+        if isinstance(resp, dict) and resp.get('Error'):
+            return jsonify({'error': resp}), 500
+        if not isinstance(resp, str):
+            # If it returned something unexpected, stringify safely
+            try:
+                chat_text = str(resp)
+            except Exception:
+                chat_text = ""
+        else:
+            chat_text = resp
+
+        return jsonify({'chat_response': chat_text}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Development server

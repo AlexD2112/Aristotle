@@ -26,12 +26,29 @@ export default function Chatbot() {
 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  // Modal and pending generation state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingGeneration, setPendingGeneration] = useState(null);
 
   // ---------- conversation state machine ----------
   const [conversationState, setConversationState] = useState('topics'); // topics, materials, waiting_for_upload, generate_quiz, quiz_ready
   const [userData, setUserData] = useState({ topics: [], materials: [] });
 
   // Local flow state for generation
+  // Local flow state for generation
+  // Persisted saved elements (saved locally): number of questions (<50), files array, prompt string, generateNow boolean
+  const [savedElements, setSavedElements] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        // Initialize by clearing any previously saved local data
+        localStorage.removeItem('aristotle_saved');
+      }
+      return { numQuestions: null, files: [], prompt: '', generateNow: false };
+    } catch (e) {
+      return { numQuestions: null, files: [], prompt: '', generateNow: false };
+    }
+  });
+
   const [awaitingPrompt, setAwaitingPrompt] = useState(false);
   const [awaitingNumQuestions, setAwaitingNumQuestions] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState('');
@@ -55,6 +72,17 @@ export default function Chatbot() {
       ctrlsRef.current.clear();
     };
   }, []);
+
+  // persist savedElements to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('aristotle_saved', JSON.stringify(savedElements));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [savedElements]);
 
   const fetchJSON = useCallback(async (url, init = {}) => {
     const ctrl = new AbortController();
@@ -252,80 +280,159 @@ export default function Chatbot() {
     }
   }, [backendBase, fetchJSON, pushBot, userData.topics, userData.materials]);
 
+  // New chat-first submit handler:
+  // - Sends message text to /api/parse_response with an expected schema
+  // - Updates local savedElements from parse result
+  // - Calls /api/generate_reply to produce a friendly bot reply about missing fields
+  // - If mandatory + optional conditions met, triggers generation flow
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     if (isTyping) return; // prevent double submit
     const text = input.trim();
     if (!text) return;
 
-    // -------------------- Awaiting quiz prompt --------------------
-    if (awaitingPrompt) {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-          role: 'user',
-          content: text
+    // append user message immediately
+    const userMsg = { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, role: 'user', content: text };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+
+    try {
+      setIsTyping(true);
+
+      // 1) Call parse_response to extract structured fields
+      const expected_output = [
+        ['num_questions', 'Number of quiz questions to generate for the user on the given subject (integer, <50)', 'integer'],
+        ['files', 'Array of files turned into text snippets', 'array'],
+        ['prompt', 'Broad prompt describing what is being studied and in what form. Leave null unless this is detailed and in depth', 'string'],
+        ['generate_now', 'Does the user want to generate now?', 'boolean']
+      ];
+
+      let parsed = null;
+      try {
+        const pResp = await fetchJSON(`${backendBase}/api/parse_response`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input_text: text, expected_output })
+        });
+        if (pResp?.ok) {
+          const pData = await pResp.json();
+          // parse_response may return {raw:...} or parsed object
+          parsed = pData.parsed ?? pData ?? (pData.raw ? pData.raw : null);
+        } else {
+          // fallback: ignore parse and continue to generate reply
+          parsed = null;
         }
-      ]);
-      setPendingPrompt(text);
-      setInput('');
-      setAwaitingPrompt(false);
+      } catch (err) {
+        parsed = null;
+      }
 
-      // Ask for number of questions next
-      pushBot('How many questions would you like me to generate? Please enter a number.');
-      setAwaitingNumQuestions(true);
-      return;
-    }
+      // 2) Update savedElements from parsed (if available)
+      if (parsed && typeof parsed === 'object') {
+        setSavedElements(prev => {
+          const next = { ...prev };
+          if (parsed.num_questions != null) {
+            const n = parseInt(parsed.num_questions, 10);
+            next.numQuestions = Number.isNaN(n) ? prev.numQuestions : n;
+          }
+          if (parsed.files != null) {
+            try {
+              next.files = Array.isArray(parsed.files) ? parsed.files : [String(parsed.files)];
+            } catch (e) {}
+          }
+          if (parsed.prompt != null) next.prompt = String(parsed.prompt);
+          if (parsed.generate_now != null) {
+            // Some parsers return strings like 'yes'/'no'
+            const val = parsed.generate_now;
+            if (typeof val === 'boolean') next.generateNow = val;
+            else if (typeof val === 'string') next.generateNow = /^(y|t|1)/i.test(val.trim());
+            else next.generateNow = Boolean(val);
+          }
+          return next;
+        });
+      }
 
-    // -------------------- Awaiting number of questions --------------------
-    if (awaitingNumQuestions) {
-      const n = parseInt(text, 10);
-      setMessages(prev => [
-        ...prev,
-        { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, role: 'user', content: text }
-      ]);
-      setInput('');
-      if (isNaN(n) || n <= 0) {
-        pushBot('Please enter a valid positive number for questions.');
+      // Build merged view of savedElements + parsed so we can pass context to generate_reply
+      const current = (() => {
+        try {
+          const raw = typeof window !== 'undefined' ? localStorage.getItem('aristotle_saved') : null;
+          return raw ? JSON.parse(raw) : savedElements;
+        } catch (e) { return savedElements; }
+      })();
+
+      const merged = { ...current };
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.num_questions != null) merged.numQuestions = Number.isNaN(parseInt(parsed.num_questions, 10)) ? merged.numQuestions : parseInt(parsed.num_questions, 10);
+        if (parsed.files != null) merged.files = Array.isArray(parsed.files) ? parsed.files : [String(parsed.files)];
+        if (parsed.prompt != null) merged.prompt = String(parsed.prompt);
+        if (parsed.generate_now != null) merged.generateNow = typeof parsed.generate_now === 'boolean' ? parsed.generate_now : /^(y|t|1)/i.test(String(parsed.generate_now).trim());
+      }
+
+      // 3) Call generate_reply to get a conversational reply about what's missing, passing merged context
+      let replyText = '';
+      try {
+        // Provide the model with current collected values so it doesn't re-ask for information already supplied
+        const genResp = await fetchJSON(`${backendBase}/api/generate_reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input_text: `Context: ${JSON.stringify(merged)}\n\nUser message: ${text}`,
+            mandatory_empty_values: ['num_questions', 'generate_now'],
+            one_of_empty_values: ['prompt', 'files']
+          })
+        });
+        if (genResp?.ok) {
+          const gd = await genResp.json();
+          replyText = gd.chat_response || JSON.stringify(gd);
+        } else {
+          replyText = `Server error: ${genResp?.status}`;
+        }
+      } catch (err) {
+        replyText = 'Sorry, I could not generate a reply.';
+      }
+
+      // show generated reply
+      pushBot(replyText);
+
+      // enforce upper bound for questions
+      if (merged.numQuestions != null && merged.numQuestions >= 50) {
+        pushBot('Please choose fewer than 50 questions.');
+        // don't generate; ask user to adjust
+        setSavedElements(prev => ({ ...prev, numQuestions: null }));
         return;
       }
 
-      // Determine prompt source
-      if (materialBased && userData.materials && userData.materials.length > 0) {
-        const mat = userData.materials[0];
-        const preview = (mat.content || '').slice(0, 4000); // trim large files
-        const promptFromMaterial =
-          `Create ${n} multiple-choice questions from the following study material:\n\n` +
-          `Title: ${mat.filename}\nContent preview:\n${preview}`;
-        await handleGenerate(n, promptFromMaterial, mat.filename);
-      } else {
-        const prompt = pendingPrompt || (userData.topics || []).join(', ') || '';
-        await handleGenerate(n, prompt, pendingPrompt ? 'user-typed-prompt' : 'topics');
-      }
-      return;
-    }
+      const hasMandatory = merged.numQuestions && merged.generateNow === true;
+      const hasOptional = (merged.prompt && merged.prompt.trim().length > 0) || (Array.isArray(merged.files) && merged.files.length > 0);
 
-    // -------------------- Default chatbot message --------------------
-    setMessages(prev => [
-      ...prev,
-      { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, role: 'user', content: text }
-    ]);
-    setInput('');
-    await handleChatbotPost(text);
-  }, [
-    isTyping,
-    input,
-    awaitingPrompt,
-    awaitingNumQuestions,
-    materialBased,
-    userData.materials,
-    userData.topics,
-    pendingPrompt,
-    handleGenerate,
-    handleChatbotPost,
-    pushBot
-  ]);
+      if (hasMandatory && hasOptional) {
+        // determine prompt source and show confirmation modal instead of auto-generating
+        let promptToUse = merged.prompt || '';
+        let sourceLabel = 'user-prompt';
+        if ((!promptToUse || promptToUse.trim() === '') && merged.files.length > 0) {
+          const mat = (userData.materials || []).find(m => merged.files.includes(m.filename)) || (userData.materials && userData.materials[0]);
+          if (mat) {
+            const preview = (mat.content || '').slice(0, 4000);
+            promptToUse = `Create ${merged.numQuestions} multiple-choice questions from the following study material:\n\nTitle: ${mat.filename}\nContent preview:\n${preview}`;
+            sourceLabel = mat.filename;
+          } else {
+            promptToUse = `Create ${merged.numQuestions} multiple-choice questions based on files: ${merged.files.join(', ')}`;
+            sourceLabel = 'files';
+          }
+        }
+
+        // Store pending generation details and open modal for user confirmation
+        setPendingGeneration({ numQuestions: merged.numQuestions, promptToUse, sourceLabel });
+        setShowConfirmModal(true);
+      }
+
+    } catch (err) {
+      pushBot('An error occurred processing your message.');
+      // eslint-disable-next-line no-console
+      console.error(err);
+    } finally {
+      setIsTyping(false);
+    }
+  }, [isTyping, input, backendBase, fetchJSON, pushBot, savedElements, userData.materials, handleGenerate]);
 
   const handleFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -363,10 +470,19 @@ export default function Chatbot() {
       setUserData(data.updatedUserData || userData);
       pushBot(data.response || 'File processed.');
 
-      // After successful upload, prompt for number of questions to generate from material
-      pushBot('Would you like me to generate questions from your uploaded material? If yes, how many? Enter a number.');
-      setMaterialBased(true);
-      setAwaitingNumQuestions(true);
+      // After successful upload, advise user how to trigger generation
+      pushBot('File processed. You can tell me how many questions to generate and say "generate now" when ready.');
+
+      // Persist filename into savedElements.files so the generation condition can be satisfied
+      setSavedElements(prev => {
+        try {
+          const existing = Array.isArray(prev.files) ? prev.files.slice() : [];
+          if (!existing.includes(file.name)) existing.push(file.name);
+          return { ...prev, files: existing };
+        } catch (e) {
+          return prev;
+        }
+      });
 
     } catch (error) {
       pushBot("Sorry, I couldn't process that file. Please try again.");
@@ -380,23 +496,34 @@ export default function Chatbot() {
   // ---------- UI bits ----------
   const fileInputRef = useRef(null);
 
+  // Modal handlers
+  const confirmGenerate = useCallback(async () => {
+    if (!pendingGeneration) return;
+    const { numQuestions, promptToUse, sourceLabel } = pendingGeneration;
+    setShowConfirmModal(false);
+    try {
+      await handleGenerate(numQuestions, promptToUse, sourceLabel);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+      pushBot('Failed to generate questions.');
+    } finally {
+      setPendingGeneration(null);
+      // reset generateNow flag so it doesn't repeatedly fire
+      setSavedElements(prev => ({ ...prev, generateNow: false }));
+    }
+  }, [pendingGeneration, handleGenerate, pushBot]);
+
+  const cancelGenerate = useCallback(() => {
+    setShowConfirmModal(false);
+    setPendingGeneration(null);
+    pushBot('Okay — feel free to add more info or say "generate now" when ready.');
+  }, [pushBot]);
+
   const ActionsBar = () => {
     if (!['materials', 'waiting_for_upload', 'generate_quiz', 'topics'].includes(conversationState)) return null;
     return (
       <div className="actions-bar">
-        <button
-          type="button"
-          onClick={() => {
-            pushBot('Sure — please type a prompt describing what the quiz should cover.');
-            setAwaitingPrompt(true);
-            setAwaitingNumQuestions(false);
-            setMaterialBased(false);
-          }}
-          disabled={isTyping}
-        >
-          Type a prompt
-        </button>
-
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -428,6 +555,22 @@ export default function Chatbot() {
       </div>
 
       <ActionsBar />
+
+      {/* Confirmation modal for generation */}
+      {showConfirmModal && pendingGeneration && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal" role="dialog" aria-modal="true" style={{ background: 'white', padding: 20, borderRadius: 8, maxWidth: '90%', width: 480 }}>
+            <h3>Ready to generate?</h3>
+            <p>I'll create {pendingGeneration.numQuestions} multiple-choice questions using:</p>
+            <pre style={{ maxHeight: 160, overflow: 'auto', background: '#f6f6f6', padding: 8 }}>{pendingGeneration.sourceLabel || ''}
+{pendingGeneration.promptToUse?.slice(0, 800)}</pre>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+              <button type="button" onClick={cancelGenerate} disabled={isTyping}>Keep adding info</button>
+              <button type="button" onClick={confirmGenerate} disabled={isTyping} style={{ background: '#0b6', color: 'white' }}>Generate now</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="input-form" aria-busy={isTyping}>
         <input
