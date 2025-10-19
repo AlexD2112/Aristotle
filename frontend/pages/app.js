@@ -10,28 +10,6 @@ export default function App() {
   const [quizTopic, setQuizTopic] = useState('');
   const [quizId, setQuizId] = useState('');
 
-  useEffect(() => {
-    const fetchBuckets = async () => {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:6767';
-      try {
-        const res = await fetch(`${backendUrl}/api/aws/buckets`);
-        if (!res.ok) {
-          // set error state instead of throwing so linters won't warn about a local throw
-          setError(`HTTP ${res.status}`);
-          setLoading(false);
-          return;
-        }
-        const data = await res.json();
-        setBuckets(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchBuckets();
-  }, []);
-
   const handleStartQuiz = (topic) => {
     setQuizTopic(topic);
     setCurrentView('game');
