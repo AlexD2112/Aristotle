@@ -3,6 +3,7 @@ import auth
 import boto3
 import os
 import PyPDF2
+import stripe
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, request, jsonify
@@ -411,6 +412,174 @@ def extract_file_content(file_path):
         return "File content extracted successfully"
     except Exception as e:
         return f"Error extracting content: {str(e)}"
+
+
+@app.route('/api/create_checkout_session', methods=['POST'])
+def create_checkout_session():
+    """Create a Stripe Checkout session for a premium subscription.
+
+    Expects JSON body optionally containing 'success_url' and 'cancel_url'.
+    Returns { ok: True, url: checkout_url } on success.
+    """
+    try:
+        stripe_secret = os.getenv('STRIPE_SECRET_KEY')
+        stripe_price = os.getenv('STRIPE_PRICE_ID')  # price ID for subscription
+        if not stripe_secret or not stripe_price:
+            return jsonify({'ok': False, 'error': 'Stripe keys not configured'}), 500
+
+        stripe.api_key = stripe_secret
+
+        data = request.get_json(silent=True) or {}
+        origin = request.headers.get('Origin') or f"http://localhost:{os.getenv('FRONTEND_PORT','3000')}"
+        success_url = data.get('success_url') or f"{origin}/profile?session=success"
+        cancel_url = data.get('cancel_url') or f"{origin}/profile?session=cancel"
+
+        # If caller provided an Authorization header (Bearer <id_token>), try to tie the Stripe customer
+        auth_header = request.headers.get('Authorization') or request.headers.get('X-Id-Token')
+        customer_id = None
+        customer_email = None
+        sub = None
+
+        if auth_header:
+            try:
+                token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
+                claims = auth.verify_cognito_jwt(token)
+                sub = claims.get('sub') or claims.get('username') or claims.get('cognito:username')
+                customer_email = claims.get('email')
+            except Exception:
+                # continue without user association
+                sub = None
+
+        # Create or reuse a Stripe customer (store sub in metadata for mapping later)
+        if sub or customer_email:
+            # try to find existing customer by metadata.sub
+            try:
+                found = None
+                # list customers by email first (fast path)
+                if customer_email:
+                    resp_list = stripe.Customer.list(email=customer_email, limit=3)
+                    for c in resp_list.data:
+                        if c.metadata and c.metadata.get('sub') == sub:
+                            found = c
+                            break
+                if not found and sub:
+                    # fallback: search recent customers and match metadata.sub
+                    resp_list = stripe.Customer.list(limit=20)
+                    for c in resp_list.data:
+                        if c.metadata and c.metadata.get('sub') == sub:
+                            found = c
+                            break
+
+                if found:
+                    customer_id = found.id
+                else:
+                    cust_params = {'metadata': {}}
+                    if sub:
+                        cust_params['metadata']['sub'] = sub
+                    if customer_email:
+                        cust_params['email'] = customer_email
+                    created = stripe.Customer.create(**cust_params)
+                    customer_id = created.id
+
+                    # Save stripe_customer_id to user's profile if we have sub
+                    try:
+                        global s3
+                        if s3 is None:
+                            s3 = aws.S3()
+                        if sub:
+                            # load existing profile (if any)
+                            res = s3.load_user_profile(sub)
+                            profile_payload = res.get('data') if res.get('ok') and res.get('data') else {
+                                'sub': sub,
+                                'displayName': customer_email or 'Learner',
+                                'email': customer_email or ''
+                            }
+                            profile_payload['stripe_customer_id'] = customer_id
+                            s3.save_user_profile(sub, profile_payload)
+                    except Exception:
+                        app.logger.exception('Failed to persist stripe_customer_id to user profile')
+            except Exception:
+                # non-fatal: proceed without customer association
+                app.logger.exception('Stripe customer lookup/creation failed')
+
+        session_params = {
+            'mode': 'subscription',
+            'payment_method_types': ['card'],
+            'line_items': [{ 'price': stripe_price, 'quantity': 1 }],
+            'success_url': success_url,
+            'cancel_url': cancel_url,
+        }
+        if customer_id:
+            session_params['customer'] = customer_id
+
+        session = stripe.checkout.Session.create(**session_params)
+
+        return jsonify({'ok': True, 'url': session.url}), 200
+    except Exception as e:
+        app.logger.exception('Stripe checkout creation failed')
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/stripe/webhook', methods=['POST'])
+def stripe_webhook():
+    payload = request.data
+    sig_header = request.headers.get('Stripe-Signature')
+    webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
+    event = None
+
+    try:
+        if webhook_secret and sig_header:
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        else:
+            # If no webhook secret configured, parse the body directly (less secure)
+            event = json.loads(payload)
+    except Exception as e:
+        app.logger.exception('Failed to parse Stripe webhook')
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+    # Handle relevant events
+    try:
+        typ = event.get('type') if isinstance(event, dict) else getattr(event, 'type', None)
+        data_obj = (event.get('data') or {}).get('object') if isinstance(event, dict) else getattr(event, 'data', {}).get('object')
+
+        # Extract customer or metadata to map to user
+        customer = data_obj.get('customer') if isinstance(data_obj, dict) else None
+        metadata = data_obj.get('metadata') if isinstance(data_obj, dict) else {}
+        sub = None
+        if metadata and metadata.get('sub'):
+            sub = metadata.get('sub')
+
+        # If event has checkout session with metadata or customer, try to find sub
+        if typ in ['checkout.session.completed', 'invoice.payment_succeeded', 'customer.subscription.created']:
+            # Try to get subscription info and mark the user premium
+            # If customer exists, we may find the user by stripe_customer_id in S3
+            try:
+                global s3
+                if s3 is None:
+                    s3 = aws.S3()
+
+                user_sub = sub
+                if not user_sub and customer:
+                    # search for profile with stripe_customer_id matching customer
+                    # This is a linear scan in S3 helper - optimize as needed
+                    user_sub = s3.find_sub_by_stripe_customer(customer)
+
+                if user_sub:
+                    res = s3.load_user_profile(user_sub)
+                    profile_payload = res.get('data') if res.get('ok') and res.get('data') else {'sub': user_sub}
+                    profile_payload['is_premium'] = True
+                    # optionally store subscription id or customer
+                    if data_obj.get('subscription'):
+                        profile_payload['stripe_subscription_id'] = data_obj.get('subscription')
+                    profile_payload['stripe_customer_id'] = customer or profile_payload.get('stripe_customer_id')
+                    s3.save_user_profile(user_sub, profile_payload)
+            except Exception:
+                app.logger.exception('Failed to mark user premium')
+
+    except Exception:
+        app.logger.exception('Error handling webhook event')
+
+    return jsonify({'status': 'ok'}), 200
 
 @app.route('/api/generate_reply', methods=['POST'])
 def generate_reply():

@@ -8,3 +8,4 @@ langchain-aws
 PyPDF2
 requests
 python-jose
+stripe

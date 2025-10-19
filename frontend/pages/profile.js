@@ -121,6 +121,35 @@ export default function Profile() {
     }
   }
 
+  async function handleGoPremium() {
+    setError('');
+    const token = idToken || (typeof window !== 'undefined' ? localStorage.getItem('idToken') : null);
+    try {
+      const resp = await fetch(`${backendUrl}/api/create_checkout_session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // optionally send auth if you want the backend to associate the session
+          'Authorization': token ? `Bearer ${token}` : undefined,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        setError(data.error || 'Failed to create checkout session');
+        return;
+      }
+      // redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setError('No checkout url returned');
+      }
+    } catch (e) {
+      setError('Network error creating checkout session');
+    }
+  }
+
   function signOut() {
     if (typeof window !== 'undefined') localStorage.removeItem('idToken');
     setIdToken('');
@@ -128,6 +157,8 @@ export default function Profile() {
   }
 
   const avatarInitial = (profile.displayName && profile.displayName[0]) ? profile.displayName[0].toUpperCase() : 'A';
+  // If displayName is empty or default, use 'A' explicitly; else use first letter
+  const avatarLetter = (profile.displayName && profile.displayName.trim() && profile.displayName !== 'Learner') ? profile.displayName.trim()[0].toUpperCase() : 'A';
 
   const containerStyle = { padding: 28, fontFamily: 'Inter, Arial, sans-serif', background: '#f6f8fb', minHeight: '75vh' };
   const cardStyle = { maxWidth: 760, margin: '0 auto', background: '#fff', padding: 22, borderRadius: 12, boxShadow: '0 8px 30px rgba(15,23,42,0.06)' };
@@ -158,17 +189,27 @@ export default function Profile() {
       )}
 
       {idToken && (
-        <div style={cardStyle}>
+        <div style={{
+          ...cardStyle,
+          border: profile.is_premium ? '2px solid #D4AF37' : undefined,
+          boxShadow: profile.is_premium ? '0 10px 34px rgba(212,175,55,0.12)' : cardStyle.boxShadow
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-            <div style={{ width: 88, height: 88, borderRadius: 999, background: 'linear-gradient(135deg,#8B5CF6,#06B6D4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 36, fontWeight: 800 }}>{avatarInitial}</div>
+            <div style={{ width: 88, height: 88, borderRadius: 999, background: profile.is_premium ? 'linear-gradient(135deg,#FFD700,#FBBF24)' : 'linear-gradient(135deg,#8B5CF6,#06B6D4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 36, fontWeight: 800 }}>{avatarLetter}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{profile.displayName}</div>
               <div style={{ ...muted }}>{profile.email || 'No email set'}</div>
             </div>
             <div>
-              <button onClick={signOut} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid #e6e9ef', background: '#fff' }}>Sign out</button>
+              <button onClick={signOut} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid #e6eef', background: '#fff' }}>Sign out</button>
             </div>
           </div>
+          {profile.is_premium && (
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ background: '#F59E0B', color: 'white', padding: '6px 10px', borderRadius: 8, fontWeight: 700 }}>Premium</div>
+              <div style={{ color: '#6b7280' }}>Thank you for supporting Aristotle — premium features unlocked.</div>
+            </div>
+          )}
 
           <form onSubmit={handleSave} style={{ display: 'grid', gap: 12, marginTop: 18 }}>
             <label style={{ display: 'block' }}>
@@ -214,6 +255,7 @@ export default function Profile() {
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="submit" style={{ padding: '10px 14px', background: '#8B5CF6', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 600 }}>Save</button>
+              <button onClick={handleGoPremium} type="button" style={{ padding: '10px 14px', background: '#06B6D4', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 600 }}>Go Premium</button>
               {saved && <span style={{ color: '#16a34a' }}>Saved</span>}
               {loading && <span style={{ color: '#6b7280' }}>Loading...</span>}
             </div>

@@ -128,6 +128,45 @@ class S3:
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
+    def find_sub_by_stripe_customer(self, stripe_customer_id: str, bucket_name: str = None):
+        """Find a user 'sub' by their stored stripe_customer_id in user/{sub}.json files.
+
+        This performs a shallow scan of user/ objects in the configured bucket and returns the
+        first matching subject (sub) or None if not found. This is intended for small-scale
+        user counts or dev usage. For production, add an index (DynamoDB) mapping customers.
+        """
+        try:
+            if not stripe_customer_id:
+                return None
+            bucket = bucket_name or os.getenv('QUESTIONBANK_BUCKET', 'questionbankaristotle')
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            prefix = 'user/'
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get('Contents', []) or []:
+                    key = obj.get('Key')
+                    # Expect keys like user/{sub}.json
+                    if not key or not key.startswith(prefix):
+                        continue
+                    try:
+                        resp = self.s3_client.get_object(Bucket=bucket, Key=key)
+                        body = resp['Body'].read().decode('utf-8')
+                        data = json.loads(body)
+                        if isinstance(data, dict) and data.get('stripe_customer_id') == stripe_customer_id:
+                            # Extract sub from filename or payload
+                            sub = data.get('sub')
+                            if not sub:
+                                # derive from key user/{sub}.json
+                                fname = key.split('/')[-1]
+                                if fname.endswith('.json'):
+                                    sub = fname[:-5]
+                            return sub
+                    except Exception:
+                        # ignore individual read errors and continue scanning
+                        continue
+            return None
+        except Exception as e:
+            return None
+
 class Bedrock:
 
     def __init__(self):
