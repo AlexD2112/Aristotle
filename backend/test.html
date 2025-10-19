@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AppSync Quick Tester</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, Arial; max-width: 800px; margin: 24px auto; }
+    input, button { padding: 8px; margin: 4px 0; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    pre { background: #111; color: #0f0; padding: 12px; border-radius: 8px; max-height: 280px; overflow: auto; }
+    fieldset { margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+<h1>AppSync Quick Tester (API Key)</h1>
+
+<script>
+  // TODO: set these for your API
+  const APPSYNC_URL = "https://egnoyrkyhbakrmewi6pm3g4lhm.appsync-api.us-east-2.amazonaws.com/graphql";
+  const API_KEY     = "da2-3tozebsz6va2vinvscsjpiusgy";
+  const REGION      = "us-east-2"; // not strictly required for simple fetch tests
+
+  async function gql(query, variables = {}) {
+    const res = await fetch(APPSYNC_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY
+      },
+      body: JSON.stringify({ query, variables })
+    });
+    const json = await res.json();
+    if (json.errors) throw new Error(JSON.stringify(json.errors, null, 2));
+    return json.data;
+  }
+
+  const Q = {
+    createGame: `
+      mutation Create($sec:Int){
+        createGame(secondsPerQuestion:$sec){
+          gameId status hostId currentQ createdAt settings { secondsPerQuestion }
+        }
+      }`,
+    joinGame: `
+      mutation Join($g:ID!, $pid:ID!, $n:String!){
+        joinGame(gameId:$g, playerId:$pid, name:$n){
+          gameId playerId name score joinedAt
+        }
+      }`,
+    listPlayers: `
+      query P($g:ID!){ listPlayers(gameId:$g){ playerId name score joinedAt } }`,
+    listQuestions: `
+      query Q($g:ID!){ listQuestions(gameId:$g){ index type question options explanation } }`,
+    submitAnswer: `
+      mutation S($g:ID!, $pid:ID!, $i:Int!, $sel:[Int!]!){
+        submitAnswer(gameId:$g, playerId:$pid, qIndex:$i, selected:$sel){
+          qIndex isCorrect newScore
+        }
+      }`,
+    getGame: `
+      query Get($g:ID!){ getGame(gameId:$g){ gameId status currentQ createdAt settings { secondsPerQuestion } } }`
+  };
+
+  function log(msg) {
+    const out = document.getElementById("out");
+    out.textContent = `${msg}\n\n` + out.textContent;
+  }
+
+  // Handlers
+  async function onCreate() {
+    try {
+      const sec = parseInt(document.getElementById("sec").value || "20", 10);
+      const data = await gql(Q.createGame, { sec });
+      const g = data.createGame;
+      document.getElementById("gameId").value = g.gameId;
+      log("Created game:\n" + JSON.stringify(g, null, 2));
+    } catch (e) { log("ERROR createGame:\n" + e.message); }
+  }
+
+  async function onJoin() {
+    try {
+      const g = document.getElementById("gameId").value.trim();
+      const pid = document.getElementById("playerId").value.trim();
+      const name = document.getElementById("name").value.trim();
+      const data = await gql(Q.joinGame, { g, pid, n: name });
+      log("Joined:\n" + JSON.stringify(data.joinGame, null, 2));
+    } catch (e) { log("ERROR joinGame:\n" + e.message); }
+  }
+
+  async function onListPlayers() {
+    try {
+      const g = document.getElementById("gameId").value.trim();
+      const data = await gql(Q.listPlayers, { g });
+      log("Players:\n" + JSON.stringify(data.listPlayers, null, 2));
+    } catch (e) { log("ERROR listPlayers:\n" + e.message); }
+  }
+
+  async function onListQuestions() {
+    try {
+      const g = document.getElementById("gameId").value.trim();
+      const data = await gql(Q.listQuestions, { g });
+      log("Questions:\n" + JSON.stringify(data.listQuestions, null, 2));
+    } catch (e) { log("ERROR listQuestions:\n" + e.message); }
+  }
+
+  async function onSubmitAnswer() {
+    try {
+      const g = document.getElementById("gameId").value.trim();
+      const pid = document.getElementById("playerId").value.trim();
+      const qIndex = parseInt(document.getElementById("qIndex").value, 10);
+      const sel = JSON.parse(document.getElementById("selected").value || "[0]");
+      const data = await gql(Q.submitAnswer, { g, pid, i: qIndex, sel });
+      log("Answer result:\n" + JSON.stringify(data.submitAnswer, null, 2));
+    } catch (e) { log("ERROR submitAnswer:\n" + e.message); }
+  }
+
+  async function onGetGame() {
+    try {
+      const g = document.getElementById("gameId").value.trim();
+      const data = await gql(Q.getGame, { g });
+      log("Game:\n" + JSON.stringify(data.getGame, null, 2));
+    } catch (e) { log("ERROR getGame:\n" + e.message); }
+  }
+</script>
+
+<fieldset>
+  <legend>1) Create Game</legend>
+  <div class="row">
+    <label>Seconds per Q:</label>
+    <input id="sec" type="number" value="20" />
+    <button onclick="onCreate()">Create</button>
+  </div>
+  <div class="row">
+    <label>gameId:</label>
+    <input id="gameId" style="width: 420px" placeholder="will fill after Create" />
+    <button onclick="onGetGame()">Get Game</button>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>2) Join Game (public)</legend>
+  <div class="row">
+    <label>playerId:</label>
+    <input id="playerId" value="player123" />
+    <label>name:</label>
+    <input id="name" value="Guest" />
+    <button onclick="onJoin()">Join</button>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>3) Questions & Players</legend>
+  <div class="row">
+    <button onclick="onListQuestions()">List Questions</button>
+    <button onclick="onListPlayers()">List Players</button>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>4) Submit Answer</legend>
+  <div class="row">
+    <label>qIndex:</label>
+    <input id="qIndex" type="number" value="0" />
+    <label>selected (JSON array of indices):</label>
+    <input id="selected" value="[1]" />
+    <button onclick="onSubmitAnswer()">Submit</button>
+  </div>
+</fieldset>
+
+<h3>Output</h3>
+<pre id="out"></pre>
+</body>
+</html>

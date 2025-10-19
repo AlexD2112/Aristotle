@@ -1,7 +1,7 @@
 import os, json, datetime, boto3
 
 DDB = boto3.client("dynamodb")
-TABLE = os.environ["TABLE_NAME"]
+TABLE = "QUIZ"
 
 def handler(event, context):
     # AppSync resolver event

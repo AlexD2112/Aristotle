@@ -57,6 +57,7 @@ export default function Home() {
       )}
       <p>Quiz</p>
       <Link href="/quiz">Quiz test</Link>
+      <Link href="/multiplayer">Multiplayer test</Link>
       <div style={{margin: '20px 0'}}>
         <input 
           type="text" 
