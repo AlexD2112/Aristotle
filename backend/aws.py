@@ -16,7 +16,7 @@ if dotenv_path:
 else:
     print("No .env file found (falling back to shell environment / instance role)")
 
-def save_to_s3(data: any, key: str,):
+def save_to_s3(data: any):
     try:
         
         jsonFile = json.dumps(data)
@@ -32,7 +32,7 @@ def save_to_s3(data: any, key: str,):
                 else:
                     return f"ERROR: {e}"
         body = io.BytesIO(jsonFile.encode("utf-8"))
-        s3_client.put_object(Bucket="question-bank-aristotle", Key=key, Body=body.getvalue())
+        s3_client.put_object(Bucket="questionbankaristotle", Key=key, Body=body.getvalue())
         return {"ok": True, "key": key}
     except Exception as e:
         return {"ok": False, "error": str(e)}
