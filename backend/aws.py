@@ -154,25 +154,6 @@ class Bedrock:
                 print(resp)
             except Exception:
                 print(str(e))
-            # If user explicitly requests mock, or we hit known Bedrock errors, return a mock response
-            mock_flag = os.getenv('MOCK_BEDROCK', '').lower() in ('1', 'true', 'yes')
-            err_code = None
-            if resp and isinstance(resp, dict) and 'Error' in resp:
-                err_code = resp['Error'].get('Code')
-
-            if mock_flag or err_code in ('ValidationException', 'InvalidSignatureException'):
-                # Return a deterministic mock MCQ list (same shape as real model output text)
-                mock_questions = [
-                    {
-                        "type": "multiple-choice",
-                        "question": "What is 2 + 2?",
-                        "options": ["A: 1", "B: 2", "C: 3", "D: 4"],
-                        "answer": [3],
-                        "explanation": "2 + 2 equals 4."
-                    }
-                ]
-                return {"output": mock_questions}
-
             # Return a structured error so callers can see details
             return {'Error': resp.get('Error') if resp and isinstance(resp, dict) and 'Error' in resp else {'Message': str(e), 'Code': getattr(e, 'code', None)}, 'ResponseMetadata': resp.get('ResponseMetadata') if resp and isinstance(resp, dict) and 'ResponseMetadata' in resp else None, 'message': str(e)}
 
