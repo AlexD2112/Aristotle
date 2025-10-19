@@ -7,7 +7,7 @@ import stripe
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv, find_dotenv
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 import json
 import uuid
 import string
@@ -36,8 +36,53 @@ s3 = None
 app = Flask(__name__)
 # Enables cross-origin resource sharing support
 # (Allows app to make requests to other domains)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 
+
+@app.route('/api/start_game',methods=["POST"])
+def start_game():
+    try:
+        global dynamo
+        if dynamo is None:
+            dynamo = aws.DynamoDB()
+        sessionId = request.headers.get("X-Key")
+        secPerQ = request.headers.get("X-Seconds-Per-Question",2)
+        questions = game_info()[0].json["questions"]
+        print(dynamo.start_quiz_step_function(sessionId, secPerQ,questions))
+        return {"ok":True}
+    except Exception as e:
+        print(e)
+        return {"ok": False, "error": str(e)}
+
+@app.route('/api/game_info', methods=['GET'])
+def game_info():
+    """
+    Get game info by session ID. Expects X-Key header.
+    Returns JSON: sessionID, players, questions, status, currentQ.
+    """
+    global dynamo
+    if dynamo is None:
+        dynamo = aws.DynamoDB()
+    session_id = request.headers.get('X-Key')
+    if not session_id:
+        return jsonify({'ok': False, 'error': 'Missing X-Key header'}), 400
+    try:
+        
+        game_data = dynamo.get_game_info(session_id)["data"]
+        if not game_data:
+            return jsonify({'ok': False, 'error': 'Session not found'}), 404
+        # Extract expected fields
+        resp = {
+            'sessionID': game_data.get('sessionID'),
+            'players': game_data.get('players', []),
+            'questions': game_data.get('questions', []),
+            'status': game_data.get('status', None),
+            'currentQ': game_data.get('currentQ', game_data.get('currentQuestion', None)),
+        }
+        return jsonify(resp), 200
+    except Exception as e:
+        print(e)
+        return jsonify({'ok': False, 'error': str(e)}), 500
 @app.route('/api/aws/buckets', methods=['GET'])
 def list_buckets():
     """List S3 buckets using boto3. Reads AWS credentials from environment or from IAM role."""
@@ -177,20 +222,20 @@ def create_quiz():
         key = request.headers.get("X-Key")
         if not key:
             return jsonify({"error": "X-Key header is required"}), 400
-        
         headers = {'X-Key': key}
         response = get()
         questions = response["data"]["questions"]
         name = response["data"]["name"]
         sessionID = generate_session_id()
-        
         global dynamo
         if dynamo == None:
             dynamo = aws.DynamoDB()
         json_data = {
             "sessionID" : sessionID,
-            "players" : [],
-            "questions": questions
+            "players" : {},
+            "questions": questions,
+            "currentQuestion": -1,
+            "timeLeft": 0
         }
         dynamo.put_session(json_data)
         return {"ok" : True, "sessionID": sessionID}
@@ -728,6 +773,16 @@ def join_game_api():
         return jsonify({'ok': False, 'error': 'Missing X-Key or X-Player-Name header'}), 400
     try:
         player_data = dynamo.join_game(session_id, player_name)
+        print(player_data)
         return jsonify({'ok': True, 'player': player_data}), 200
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+    
+if __name__ == '__main__':
+    # Development server
+    host = os.getenv('FLASK_HOST', '0.0.0.0')
+    port = int(os.getenv('FLASK_PORT', 6767))
+    debug = os.getenv('FLASK_ENV', 'development') == 'development'
+    #app.run(host=host, port=port, debug=debug)
+    app.run(host='0.0.0.0', port=int(os.getenv('FLASK_PORT', 6767)), debug=True)
+
