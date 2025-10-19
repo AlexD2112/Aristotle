@@ -44,7 +44,7 @@ def debug_env():
         'AWS_ACCESS_KEY_ID_present': bool(os.getenv('AWS_ACCESS_KEY_ID')),
         'AWS_SECRET_ACCESS_KEY_present': bool(os.getenv('AWS_SECRET_ACCESS_KEY')),
         'AWS_REGION': os.getenv('AWS_REGION') or None,
-        'FLASK_ENV': os.getenv('FLASK_ENV')
+        'FLASK_ENV': os.getenv('FLASK_ENV') or "development"
     }
     return jsonify(present), 200
 
