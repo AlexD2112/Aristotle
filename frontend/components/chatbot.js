@@ -41,9 +41,16 @@ export default function Chatbot() {
                 userData
               })
             });
-      
+
+            if (!response.ok) {
+              let bodyText = '';
+              try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable body>'; }
+              console.error('Chatbot API error', response.status, bodyText);
+              setMessages(prev => [...prev, { role: 'bot', content: `Sorry, the server returned ${response.status}. Check console for details.` }]);
+              return;
+            }
+
             const data = await response.json();
-            
             setMessages(prev => [...prev, { role: 'bot', content: data.response }]);
             setConversationState(data.nextState);
             setUserData(data.updatedUserData);

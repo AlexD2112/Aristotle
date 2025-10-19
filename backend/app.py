@@ -67,10 +67,20 @@ def debug_identity():
 @app.route('/api/generate_mcq', methods=["GET"])
 def generate_mcq():
     try:
-        num_questions = int(request.headers.get("X-Num-Questions"))
-        topic = request.headers.get("X-Topic")
-        return jsonify(aws.generate_mcq(num_questions,prompt=topic)), 200
-    # This code is unsafe, remove for prod
+        # Support POST with JSON body for better client semantics, fall back to headers for GET
+        if request.method == 'POST' or request.is_json:
+            data = request.get_json(silent=True) or {}
+            num_questions = int(data.get('num_questions', data.get('numQuestions', 1)))
+            topic = data.get('topic') or data.get('prompt')
+        else:
+            num_questions = int(request.headers.get("X-Num-Questions", 1))
+            topic = request.headers.get("X-Topic")
+
+        result = aws.generate_mcq(num_questions, prompt=topic)
+        # If aws.generate_mcq returns an error dict, pass it through
+        if isinstance(result, dict) and result.get('Error'):
+            return jsonify(result), 500
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -78,8 +88,19 @@ def generate_mcq():
 def save():
     try:
         key = request.headers.get("X-Key")
-        data = request.get_json()
-        aws.save_to_s3(data)
+        if not key:
+            return jsonify({"error": "Missing X-Key header"}), 400
+
+        data = request.get_json(silent=True)
+        if data is None:
+            return jsonify({"error": "Missing JSON body"}), 400
+
+        result = aws.save_to_s3(data, key)
+        # aws.save_to_s3 now returns a dict with ok or error
+        if isinstance(result, dict) and result.get('ok'):
+            return jsonify({"ok": True, "key": key}), 200
+        else:
+            return jsonify({"error": result}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
