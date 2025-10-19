@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 export default function Chatbot() {
   // Prefer using a Next.js rewrite so you can call relative /api/* in prod.
   // Keep env for local/dev.
-  const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:6767';
 
   // ---------- messages ----------
   const [messages, setMessages] = useState([
