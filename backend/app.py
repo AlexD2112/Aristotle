@@ -27,6 +27,7 @@ if dotenv_path:
 else:
     print("No .env file found (falling back to shell environment / instance role)")
 bedrock = None
+s3 = None
 app = Flask(__name__)
 # Enables cross-origin resource sharing support
 # (Allows app to make requests to other domains)
@@ -136,8 +137,24 @@ def generate_mcq():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/get",methods=["GET"])
+def get():
+    global s3
+    if s3 == None:
+        s3 = aws.S3()
+    
+    try:
+        key = request.headers.get("X-Key")
+        return s3.load_from_s3(id=key)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/save", methods=["POST"])
 def save():
+    global s3
+    if s3 == None:
+        s3 = aws.S3()
     try:
         data = request.get_json(silent=True) or {}
         # Accept optional filename and key from header or JSON body
@@ -145,7 +162,7 @@ def save():
         filename = data.get('filename') or data.get('name')
 
         # Call aws.save_to_s3 with filename/key if provided. aws.save_to_s3 will generate a key if None.
-        result = aws.save_to_s3(data, filename=filename, key=key)
+        result = s3.save_to_s3(data, filename=filename, key=key)
         if isinstance(result, dict) and result.get('ok'):
             return jsonify({ 'ok': True, 'key': result.get('key'), 'bucket': result.get('bucket') }), 200
         return jsonify({ 'error': result }), 500

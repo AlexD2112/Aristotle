@@ -15,46 +15,64 @@ if dotenv_path:
 else:
     print("No .env file found (falling back to shell environment / instance role)")
 
-def save_to_s3(data: Any, filename: Optional[str] = None, bucket_name: Optional[str] = None, key: Optional[str] = None):
-    """Save JSON-serializable `data` to S3.
+class S3:
+    def __init__(self):
+        self.s3_client = boto3.client('s3', region_name=AWS_REGION)
 
-    Parameters:
-      - data: object to save (will be json.dumps)
-      - filename: optional friendly filename to include in ContentDisposition and metadata
-      - bucket_name: optional S3 bucket (falls back to QUESTIONBANK_BUCKET env or default)
-      - key: optional explicit S3 key. If not provided one will be generated under questionbank/
+    def load_from_s3(self,id: str, bucket_name: str = None, ):
+        try:
+            if not isinstance(id, str):
+                return {"ok": False, "error": "Invalid id parameter: must be a string"}
+            bucket = bucket_name or os.getenv("QUESTIONBANK_BUCKET","questionbankaristotle")
+            key = f"questionbank/questions-{id}.json"
+            response = self.s3_client.get_object(Bucket=bucket, Key=key)
+            data = json.loads(response['Body'].read().decode('utf-8'))
+            return {"ok": True, "data": data}
+        except Exception as e:
+            if isinstance(e, self.s3_client.exceptions.NoSuchKey):
+                return {"ok": False, "error": 404}
+            return {"ok": False, "error": e}
 
-    Returns: { ok: True, key: <s3-key>, bucket: <bucket> } or { ok: False, error: msg }
-    """
-    try:
-        bucket = bucket_name or os.getenv('QUESTIONBANK_BUCKET', 'questionbankaristotle')
-        json_text = json.dumps(data, ensure_ascii=False, indent=2)
-        s3_client = boto3.client('s3', region_name=AWS_REGION)
+    def save_to_s3(self, data: any, filename: str = None, bucket_name: str = None, key: str = None):
+        """Save JSON-serializable `data` to S3.
 
-        if not key:
-            # Use a readable prefix and a uuid4-based filename for easy lookup and low chance of collision
-            key = f"questionbank/questions-{uuid.uuid4().hex}.json"
+        Parameters:
+        - data: object to save (will be json.dumps)
+        - filename: optional friendly filename to include in ContentDisposition and metadata
+        - bucket_name: optional S3 bucket (falls back to QUESTIONBANK_BUCKET env or default)
+        - key: optional explicit S3 key. If not provided one will be generated under questionbank/
 
-        # Provide a ContentDisposition so browsers download a friendly filename when appropriate
-        content_disposition = None
-        if filename:
-            # sanitize filename minimally
-            safe_fn = ''.join(c for c in filename if c.isalnum() or c in (' ', '.', '-', '_')).strip()
-            content_disposition = f'attachment; filename="{safe_fn}"'
+        Returns: { ok: True, key: <s3-key>, bucket: <bucket> } or { ok: False, error: msg }
+        """
+        try:
+            bucket = bucket_name or os.getenv('QUESTIONBANK_BUCKET', 'questionbankaristotle')
+            json_text = json.dumps(data, ensure_ascii=False, indent=2)
 
-        put_args = {
-            'Bucket': bucket,
-            'Key': key,
-            'Body': json_text.encode('utf-8'),
-            'ContentType': 'application/json'
-        }
-        if content_disposition:
-            put_args['ContentDisposition'] = content_disposition
 
-        s3_client.put_object(**put_args)
-        return {'ok': True, 'key': key, 'bucket': bucket}
-    except Exception as e:
-        return {'ok': False, 'error': str(e)}
+            if not key:
+                # Use a readable prefix and a uuid4-based filename for easy lookup and low chance of collision
+                key = f"questionbank/questions-{uuid.uuid4().hex}.json"
+
+            # Provide a ContentDisposition so browsers download a friendly filename when appropriate
+            content_disposition = None
+            if filename:
+                # sanitize filename minimally
+                safe_fn = ''.join(c for c in filename if c.isalnum() or c in (' ', '.', '-', '_')).strip()
+                content_disposition = f'attachment; filename="{safe_fn}"'
+
+            put_args = {
+                'Bucket': bucket,
+                'Key': key,
+                'Body': json_text.encode('utf-8'),
+                'ContentType': 'application/json'
+            }
+            if content_disposition:
+                put_args['ContentDisposition'] = content_disposition
+
+            self.s3_client.put_object(**put_args)
+            return {'ok': True, 'key': key, 'bucket': bucket}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
 class Bedrock:
 
