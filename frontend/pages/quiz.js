@@ -27,6 +27,7 @@ const jsonFile = {
 }
 
 export default function Quiz() {
+    const backendBase = "http://localhost:6767"
     const [currentQuestion, setCurrentQuestion] = useState(0);
     const [score, setScore] = useState(0);
     const [showResult, setShowResult] = useState(false);
@@ -36,16 +37,32 @@ export default function Quiz() {
     const [isAnswered, setIsAnswered] = useState(false);
     
     useEffect(() => {
-        const queryParams = new URLSearchParams(window.location.search);
-        const urlKey = queryParams.get('key');
-        
-        if (urlKey) {
-            // Here you would typically fetch quiz data from an API using the key
-            // For now, we'll just check if it matches our sample quiz
-            if (urlKey === jsonFile.key) {
-                setQuizData(jsonFile);
+        async function fetchQuiz() {
+            const queryParams = new URLSearchParams(window.location.search);
+            const id = queryParams.get('id');
+            if (id) {
+                try {
+                    const resp = await fetch(`${backendBase}/api/get`, { 
+                        headers: { 
+                            'X-Key': id,
+                            'Access-Control-Allow-Origin': '*'
+                        }
+                    });
+                    
+                    if (resp.ok) {
+                        const jsonData = await resp.json();
+                        console.log(resp);
+                        console.log(jsonData);
+                        setQuizData(jsonData.data || jsonData);
+                    } else {
+                        console.error('Failed to load quiz', data);
+                    }
+                } catch (error) {
+                    console.error('Failed to load quiz', error);
+                }
             }
         }
+        fetchQuiz();
     }, []);
     useEffect(() => {
         if (timeLeft > 0 && !isAnswered) {
@@ -59,11 +76,11 @@ export default function Quiz() {
     const handleAnswer = (optionIndex) => {
         setIsAnswered(true);
         setSelectedOption(optionIndex);
-        if (optionIndex === jsonFile.questions[currentQuestion].answer[0]) {
+        if (optionIndex === quizData.questions[currentQuestion].answer[0]) {
             setScore(score + 1);
         }
         setTimeout(() => {
-            if (currentQuestion < jsonFile.questions.length - 1) {
+            if (currentQuestion < quizData.questions.length - 1) {
                 setCurrentQuestion(currentQuestion + 1);
                 setTimeLeft(30);
                 setSelectedOption(null);
@@ -78,25 +95,25 @@ export default function Quiz() {
         return (
             <div className="p-4">
                 <h2>Quiz Complete!</h2>
-                <p>Your score: {score} out of {jsonFile.questions.length}</p>
+                <p>Your score: {score} out of {quizData.questions.length}</p>
             </div>
         );
     }
 
     return (
         <div className="p-4">
-            <h2>{jsonFile.name}</h2>
+            <h2>{quizData.name || "Quiz"}</h2>
             <div>Time left: {timeLeft}s</div>
             <div className="my-4">
-                <h3>Question {currentQuestion + 1}: {jsonFile.questions[currentQuestion].question}</h3>
+                <h3>Question {currentQuestion + 1}: {quizData.questions[currentQuestion].question}</h3>
                 <div className="space-y-2">
-                    {jsonFile.questions[currentQuestion].options.map((option, index) => (
+                    {quizData.questions[currentQuestion].options.map((option, index) => (
                         <button
                             key={index}
                             onClick={() => !isAnswered && handleAnswer(index)}
                             className={`block w-full p-2 text-left border ${
                                 isAnswered
-                                     ? index === jsonFile.questions[currentQuestion].answer[0]
+                                     ? index === quizData.questions[currentQuestion].answer[0]
                                         ? 'answer correct'
                                         : selectedOption === index
                                         ? 'answer incorrect'
@@ -110,7 +127,7 @@ export default function Quiz() {
                 </div>
                 {isAnswered && (
                     <div className="mt-4">
-                        {jsonFile.questions[currentQuestion].explanation}
+                        {quizData.questions[currentQuestion].explanation}
                     </div>
                 )}
             </div>
