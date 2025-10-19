@@ -556,6 +556,26 @@ body {
   margin-bottom: 20px;
 }
 
+.player {
+  border-radius: 10px;
+  padding: 20px;
+  background-color: rgb(244, 237, 241);
+  margin: 10px;
+}
+
+.start {
+  border-radius: 10px;
+  padding: 20px;
+  background-color: rgb(137, 207, 240);
+  margin: 10px;
+}
+.create {
+  border-radius: 10px;
+  padding: 20px;
+  background-color: rgb(233, 233, 237);
+  margin: 10px;
+}
+
 /* Quiz Results Styles */
 .results-container {
   max-width: 600px;
