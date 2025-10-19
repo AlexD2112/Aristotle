@@ -125,6 +125,7 @@ class Bedrock:
         Mandatory fields: {', '.join(mandatory_empty_values) if len(mandatory_empty_values) > 0 else 'None'}
         Optional fields (at least one required): {', '.join(one_of_empty_values) if len(one_of_empty_values) > 0 else 'None'}
         Please respond in a way that encourages the user to provide the missing information, while acting friendly, helpful and human. 
+        Only ask the user if they are ready for generation (generate_now) if theres no other issues (no other missing mandatory values, and at least one optional value is present), Otherwise, DO NOT MENTION ANYTHING ABOUT generate_now
         Do not tell the user what the mandatory and optional fields are in a list format! Merely conversationally indicate what is necesary in an intuitive manner.
         """
         body = {
@@ -185,6 +186,7 @@ class Bedrock:
             f"- If you cannot determine a value for a field, use the most relevant null-like value for its type "
             f"(for example: empty string for text, empty array for lists, empty object for objects, or JSON null for numbers/booleans).\n"
             f"- Do NOT include any additional keys — the output must contain only the fields listed above.\n"
+            f"- Even if it seems properly positioned, the response must be a full representation of the value- tend towards leaving null if you have malformed/shitty/not enough info for values.\n"
             f"- Output must be valid JSON and contain ONLY the JSON object (no explanatory text).\n\n"
             f"Input Text from User: {input_text}\n"
         )

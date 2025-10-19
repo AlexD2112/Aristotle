@@ -77,7 +77,25 @@ export default function Chatbot() {
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
-        localStorage.setItem('aristotle_saved', JSON.stringify(savedElements));
+        // Persist savedElements to localStorage, but do NOT overwrite existing values with null/empty ones.
+        // - Only set numQuestions when it's not null
+        // - Only set prompt when it's a non-empty string
+        // - Only set generateNow when it's boolean (allow true/false)
+        // - Merge files arrays and dedupe (do not replace existing files with an empty array)
+        const existing = JSON.parse(localStorage.getItem('aristotle_saved')) || {};
+        const merged = { ...existing };
+
+        if (savedElements && typeof savedElements === 'object') {
+          if (savedElements.numQuestions != null) merged.numQuestions = savedElements.numQuestions;
+          if (typeof savedElements.prompt === 'string' && savedElements.prompt.trim() !== '') merged.prompt = savedElements.prompt;
+          if (typeof savedElements.generateNow === 'boolean') merged.generateNow = savedElements.generateNow;
+
+          const existingFiles = Array.isArray(existing.files) ? existing.files : [];
+          const newFiles = Array.isArray(savedElements.files) ? savedElements.files.filter(f => f != null && String(f).trim() !== '') : [];
+          merged.files = Array.from(new Set([...existingFiles, ...newFiles]));
+        }
+
+        localStorage.setItem('aristotle_saved', JSON.stringify(merged));
       }
     } catch (e) {
       // ignore
@@ -95,6 +113,8 @@ export default function Chatbot() {
       ctrlsRef.current.delete(ctrl);
     }
   }, []);
+
+  // helper functions and other code continue here
 
   // ---------- helpers ----------
   // Safer normalizer: JSON-first, otherwise treat string as a single item (no line splitting).
@@ -230,7 +250,7 @@ export default function Chatbot() {
         description: description || 'No description provided',
         questions,
         metadata: {
-          source: sourceLabel || promptToUse || 'user-prompt',
+          source: sourceLabel || promptToUse || 'user prompt: ',
           topics: userData.topics || [],
           materials: (userData.materials || []).map(m => ({ filename: m.filename }))
         }
@@ -300,10 +320,12 @@ export default function Chatbot() {
       setIsTyping(true);
 
       // 1) Call parse_response to extract structured fields
+      // NOTE: We instruct the parser to only populate num_questions when the user explicitly requests a number of questions.
+      // Examples of explicit forms: "generate 10 questions", "please create 8 questions", "number of questions: 12", "10 questions".
+      // Do NOT infer num_questions from other numbers in the text (e.g., chapter counts, dates, years). If ambiguous, return null.
       const expected_output = [
-        ['num_questions', 'Number of quiz questions to generate for the user on the given subject (integer, <50)', 'integer'],
-        ['files', 'Array of files turned into text snippets', 'array'],
-        ['prompt', 'Broad prompt describing what is being studied and in what form. Leave null unless this is detailed and in depth', 'string'],
+        ['num_questions', "ONLY populate this field when the user explicitly requests a number of quiz questions. Acceptable forms include: 'generate 10 questions', 'please create 8 questions', 'number of questions: 12', or '10 questions'. DO NOT infer from other numeric mentions such as chapter counts, dates, years, or scores. If ambiguous, return null. (integer, <50)", 'integer'],
+        ['prompt', 'ONLY FILL THIS WITH Prompt describing what is being studied. Leave null unless this is detailed and in depth. Leave null if this is a prompt not about a study subject', 'string'],
         ['generate_now', 'Does the user want to generate now?', 'boolean']
       ];
 
@@ -330,15 +352,15 @@ export default function Chatbot() {
       if (parsed && typeof parsed === 'object') {
         setSavedElements(prev => {
           const next = { ...prev };
-          if (parsed.num_questions != null) {
+          // Only accept a parsed num_questions if the user's message clearly expresses an intent about questions
+          if (parsed.num_questions != null && !Number.isNaN(parseInt(parsed.num_questions)) && parseInt(parsed.num_questions) > 0) {
             const n = parseInt(parsed.num_questions, 10);
+            // Accept parsed num_questions when the parser provides it. The parser was instructed to only
+            // populate this when the user explicitly requests a number of questions (see expected_output).
             next.numQuestions = Number.isNaN(n) ? prev.numQuestions : n;
           }
-          if (parsed.files != null) {
-            try {
-              next.files = Array.isArray(parsed.files) ? parsed.files : [String(parsed.files)];
-            } catch (e) {}
-          }
+          // IMPORTANT: do NOT accept files from the parser. Files must be uploaded using the Upload button only.
+          // if (parsed.files != null) { ... }  <- intentionally removed
           if (parsed.prompt != null) next.prompt = String(parsed.prompt);
           if (parsed.generate_now != null) {
             // Some parsers return strings like 'yes'/'no'
@@ -361,37 +383,13 @@ export default function Chatbot() {
 
       const merged = { ...current };
       if (parsed && typeof parsed === 'object') {
-        if (parsed.num_questions != null) merged.numQuestions = Number.isNaN(parseInt(parsed.num_questions, 10)) ? merged.numQuestions : parseInt(parsed.num_questions, 10);
-        if (parsed.files != null) merged.files = Array.isArray(parsed.files) ? parsed.files : [String(parsed.files)];
+        if (parsed.num_questions != null) {
+          merged.numQuestions = Number.isNaN(parseInt(parsed.num_questions, 10)) ? merged.numQuestions : parseInt(parsed.num_questions, 10);
+        }
+        // Do NOT merge files from parsed free text. Files are only set via the upload flow.
         if (parsed.prompt != null) merged.prompt = String(parsed.prompt);
         if (parsed.generate_now != null) merged.generateNow = typeof parsed.generate_now === 'boolean' ? parsed.generate_now : /^(y|t|1)/i.test(String(parsed.generate_now).trim());
       }
-
-      // 3) Call generate_reply to get a conversational reply about what's missing, passing merged context
-      let replyText = '';
-      try {
-        // Provide the model with current collected values so it doesn't re-ask for information already supplied
-        const genResp = await fetchJSON(`${backendBase}/api/generate_reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            input_text: `Context: ${JSON.stringify(merged)}\n\nUser message: ${text}`,
-            mandatory_empty_values: ['num_questions', 'generate_now'],
-            one_of_empty_values: ['prompt', 'files']
-          })
-        });
-        if (genResp?.ok) {
-          const gd = await genResp.json();
-          replyText = gd.chat_response || JSON.stringify(gd);
-        } else {
-          replyText = `Server error: ${genResp?.status}`;
-        }
-      } catch (err) {
-        replyText = 'Sorry, I could not generate a reply.';
-      }
-
-      // show generated reply
-      pushBot(replyText);
 
       // enforce upper bound for questions
       if (merged.numQuestions != null && merged.numQuestions >= 50) {
@@ -400,14 +398,16 @@ export default function Chatbot() {
         setSavedElements(prev => ({ ...prev, numQuestions: null }));
         return;
       }
+      
 
       const hasMandatory = merged.numQuestions && merged.generateNow === true;
       const hasOptional = (merged.prompt && merged.prompt.trim().length > 0) || (Array.isArray(merged.files) && merged.files.length > 0);
 
+      let prompt
       if (hasMandatory && hasOptional) {
         // determine prompt source and show confirmation modal instead of auto-generating
         let promptToUse = merged.prompt || '';
-        let sourceLabel = 'user-prompt';
+        let sourceLabel = 'user-prompt: ';
         if ((!promptToUse || promptToUse.trim() === '') && merged.files.length > 0) {
           const mat = (userData.materials || []).find(m => merged.files.includes(m.filename)) || (userData.materials && userData.materials[0]);
           if (mat) {
@@ -419,16 +419,51 @@ export default function Chatbot() {
             sourceLabel = 'files';
           }
         }
-
         // Store pending generation details and open modal for user confirmation
-        setPendingGeneration({ numQuestions: merged.numQuestions, promptToUse, sourceLabel });
-        setShowConfirmModal(true);
-      }
+      setPendingGeneration({ numQuestions: merged.numQuestions, promptToUse, sourceLabel });
+      setShowConfirmModal(true);
+      } else {
+        // 3) Call generate_reply to get a conversational reply about what's missing, passing merged context
+        let replyText = '';
+        try {
+          // Provide the model with current collected values so it doesn't re-ask for information already supplied
 
+          //Find which mandatory values are empty:
+          let mandatory_empty_values = [];
+          if (merged.numQuestions == null || merged.numQuestions === 0) mandatory_empty_values.push('num_questions');
+          if (merged.generateNow !== true) mandatory_empty_values.push('generate_now'); 
+          let optional_empty_values = [];
+          if (!merged.prompt || merged.prompt.trim().length === 0) optional_empty_values.push('prompt');
+          if (!Array.isArray(merged.files) || merged.files.length === 0) optional_empty_values.push('files');
+          // Instruct the reply generator explicitly: do NOT change the authoritative number of questions
+          const genResp = await fetchJSON(`${backendBase}/api/generate_reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              input_text: `Context: ${JSON.stringify(merged)}\n\nUser message: ${text}`,
+              mandatory_empty_values: mandatory_empty_values,
+              one_of_empty_values: ['prompt', 'files'],
+              // Strong instructions for the model/back-end: do not modify numQuestions and do not infer file uploads from free text
+              system_instructions: "TREAT THE PROVIDED 'numQuestions' VALUE AS AUTHORITATIVE — DO NOT ALTER OR INFER A DIFFERENT NUMBER FROM THE USER'S FREE TEXT. DO NOT INFER, EXTRACT, OR CREATE FILES/FILE NAMES FROM THE USER'S FREE-TEXT MESSAGES. FILES MUST COME ONLY FROM EXPLICIT UPLOADS."
+            })
+          });
+          if (genResp?.ok) {
+            const gd = await genResp.json();
+            replyText = gd.chat_response || JSON.stringify(gd);
+          } else {
+            replyText = `Server error: ${genResp?.status}`;
+          }
+        } catch (err) {
+          replyText = 'Sorry, I could not generate a reply.';
+        }
+
+        // show generated reply
+        pushBot(replyText);
+      }
     } catch (err) {
+      console.error(err);
       pushBot('An error occurred processing your message.');
       // eslint-disable-next-line no-console
-      console.error(err);
     } finally {
       setIsTyping(false);
     }
