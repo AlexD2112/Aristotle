@@ -54,7 +54,7 @@ export default function Quiz() {
                         console.log(resp);
                         console.log(jsonData);
                         setQuizData(jsonData.data || jsonData);
-                    } else {
+                        } else {
                         console.error('Failed to load quiz', data);
                     }
                 } catch (error) {

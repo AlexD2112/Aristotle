@@ -78,10 +78,9 @@ export default function App() {
         <div className="header-section">
           <div className="logo">
             <div className="logo-icon">
-              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                <path d="M20 2L24 12H36L27 20L31 30L20 24L9 30L13 20L4 12H16L20 2Z" fill="white"/>
-                <circle cx="32" cy="8" r="2" fill="white" opacity="0.8"/>
-                <circle cx="34" cy="6" r="1" fill="white" opacity="0.6"/>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="white"/>
+                <path d="M12 6L13.5 10.5L18 12L13.5 13.5L12 18L10.5 13.5L6 12L10.5 10.5L12 6Z" fill="#8B5CF6"/>
               </svg>
             </div>
           </div>
