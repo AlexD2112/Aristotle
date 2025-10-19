@@ -2,6 +2,7 @@ import boto3
 import os
 import json
 import uuid
+import time
 from typing import Any, Optional
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv, find_dotenv
@@ -14,6 +15,31 @@ if dotenv_path:
     print(f"Loaded .env from: {dotenv_path}")
 else:
     print("No .env file found (falling back to shell environment / instance role)")
+
+class DynamoDB:
+    def __init__(self):
+        self.dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        self.table = self.dynamodb.Table("QuizSessions")
+
+    def put_session(self, session_data: dict) -> dict:
+        try:
+            response = self.table.put_item(
+                Item=session_data
+            )
+            return {'ok': True, 'response': response}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    def get_session(self, session_id: str) -> dict:
+        try:
+            response = self.table.get_item(
+                Key={'id': {'S': session_id}}
+            )
+            if 'Item' in response:
+                return {'ok': True, 'data': json.loads(response['Item']['data']['S'])}
+            return {'ok': False, 'error': 'Session not found'}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
 class S3:
     def __init__(self):

@@ -8,6 +8,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
 import uuid
+import string
+import random
 import dynamodb_helper as db
 
 # import aws_cdk as cdk
@@ -27,6 +29,7 @@ if dotenv_path:
 else:
     print("No .env file found (falling back to shell environment / instance role)")
 bedrock = None
+dynamo = None
 s3 = None
 app = Flask(__name__)
 # Enables cross-origin resource sharing support
@@ -165,6 +168,38 @@ def generate_mcq():
         return jsonify({ 'raw': result }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/create_quiz', methods=['POST'])
+def create_quiz():
+    try:
+        key = request.headers.get("X-Key")
+        if not key:
+            return jsonify({"error": "X-Key header is required"}), 400
+        
+        headers = {'X-Key': key}
+        response = get()
+        questions = response["data"]["questions"]
+        name = response["data"]["name"]
+        sessionID = generate_session_id()
+        
+        global dynamo
+        if dynamo == None:
+            dynamo = aws.DynamoDB()
+        json_data = {
+            "sessionID" : sessionID,
+            "players" : [],
+            "questions": questions
+        }
+        dynamo.put_session(json_data)
+        return {"ok" : True, "sessionID": sessionID}
+        
+    except Exception as e:
+        return {"ok": False, "error":str(e)}
+
+
+
+def generate_session_id():
+    return ''.join(random.choices(string.ascii_uppercase, k=6))
 
 @app.route("/api/get",methods=["GET"])
 def get():
@@ -435,3 +470,23 @@ if __name__ == '__main__':
     debug = os.getenv('FLASK_ENV', 'development') == 'development'
     #app.run(host=host, port=port, debug=debug)
     app.run(host='0.0.0.0', port=int(os.getenv('FLASK_PORT', 6767)), debug=True)
+
+@app.route('/api/join_game', methods=['POST'])
+def join_game_api():
+    """
+    Join a game session. Expects X-Key (sessionID) and X-Player-Name headers.
+    Calls dynamo.join_game(sessionID, playerName).
+    Returns JSON response with player data or error.
+    """
+    global dynamo
+    if dynamo is None:
+        dynamo = aws.DynamoDB()
+    session_id = request.headers.get('X-Key')
+    player_name = request.headers.get('X-Player-Name')
+    if not session_id or not player_name:
+        return jsonify({'ok': False, 'error': 'Missing X-Key or X-Player-Name header'}), 400
+    try:
+        player_data = dynamo.join_game(session_id, player_name)
+        return jsonify({'ok': True, 'player': player_data}), 200
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
