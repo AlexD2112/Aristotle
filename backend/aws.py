@@ -9,6 +9,8 @@ from dotenv import load_dotenv, find_dotenv
 
 AWS_REGION = "us-east-1"
 
+
+
 dotenv_path = find_dotenv()
 if dotenv_path:
     load_dotenv(dotenv_path)
@@ -16,11 +18,58 @@ if dotenv_path:
 else:
     print("No .env file found (falling back to shell environment / instance role)")
 
+
 class DynamoDB:
     def __init__(self):
         self.dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        self.sf = boto3.client("stepfunctions",region_name=AWS_REGION)
         self.table = self.dynamodb.Table("QuizSessions")
 
+    def start_quiz_step_function(self, gameId: str, secondsPerQuestion: int, questions: list) -> dict:
+        """
+        Start an execution of the quiz Step Function using boto3 Step Functions client.
+        Returns a dict indicating success or failure, with executionArn or error message.
+        """
+        try:
+            step_function_arn = os.getenv("AWS_STEP_FUNCTION_ARN")
+            if not step_function_arn:
+                return {"ok": False, "error": "AWS_STEP_FUNCTION_ARN not set in environment"}
+
+            input_payload = {
+                "gameId": gameId,
+                "secondsPerQuestion": secondsPerQuestion,
+                "questions": questions
+            }
+            response = self.sf.start_execution(
+                stateMachineArn=step_function_arn,
+                name=f"{gameId}-{int(time.time())}",
+                input=json.dumps(input_payload)
+            )
+            return {"response":str(response)}
+            return {"ok": True, "executionArn": response.get("executionArn")}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def join_game(self, session_id: str, player_name: str) -> dict:
+        try:
+            # Add player to the 'players' map, using player_name as the key, and set default fields
+            now = int(time.time())
+            self.table.update_item(
+                Key={'sessionID': session_id},
+                UpdateExpression='SET players = if_not_exists(players, :empty_map)',
+                ExpressionAttributeValues={':empty_map': {}}
+                )
+            response = self.table.update_item(
+                Key={'sessionID': session_id},
+                UpdateExpression='SET players.#player = :playerinfo',
+                ExpressionAttributeNames={'#player': player_name},
+                ExpressionAttributeValues={':playerinfo': {'score': 0, 'joinedAt': now}},
+                ReturnValues='UPDATED_NEW'
+                )  
+            return {'ok': True, 'response': response}
+        except Exception as e:
+            print(e)
+            return {'ok': False, 'error': str(e)}
     def put_session(self, session_data: dict) -> dict:
         try:
             response = self.table.put_item(
@@ -29,7 +78,7 @@ class DynamoDB:
             return {'ok': True, 'response': response}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
-
+            
     def get_session(self, session_id: str) -> dict:
         try:
             response = self.table.get_item(
@@ -41,13 +90,39 @@ class DynamoDB:
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
+    def get_game_info(self, session_id: str) -> dict:
+        try:
+            response = self.table.get_item(Key={'sessionID': session_id})
+            item = response.get('Item')
+            if not item:
+                return {'ok': False, 'error': 'Session not found'}
+
+            # Extract players as a list of names
+            players_map = item.get('players', {})
+            if isinstance(players_map, dict):
+                player_names = list(players_map.keys())
+            else:
+                player_names = []
+
+            data = {
+                'sessionID': item.get('sessionID'),
+                'players': player_names,  # only names
+                'questions': item.get('questions', []),
+                'status': item.get('status', 'pending'),
+                'currentQ': item.get('currentQ', item.get('currentQuestion', 0))
+            }
+
+            return {'ok': True, 'data': data}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
 class S3:
     def __init__(self):
         self.s3_client = boto3.client('s3', region_name=AWS_REGION)
 
     def load_from_s3(self,id: str, bucket_name: str = None, ):
         try:
-            if not isinstance(id, str):
+            if not isinstance(id, str): 
                 return {"ok": False, "error": "Invalid id parameter: must be a string"}
             bucket = bucket_name or os.getenv("QUESTIONBANK_BUCKET","questionbankaristotle")
             key = f"questionbank/questions-{id}.json"
