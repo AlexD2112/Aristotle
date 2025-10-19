@@ -1,12 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Chatbot from '../components/chatbot';
 import SimpleQuiz from '../components/SimpleQuiz';
+import Link from 'next/link';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [showChatbot, setShowChatbot] = useState(false);
   const [userMessage, setUserMessage] = useState('');
   const [quizTopic, setQuizTopic] = useState('');
+  
+  // AWS Buckets state
+  const [buckets, setBuckets] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [quizId, setQuizId] = useState('');
+
+  useEffect(() => {
+    const fetchBuckets = async () => {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+      try {
+        const res = await fetch(`${backendUrl}/api/aws/buckets`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setBuckets(data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBuckets();
+  }, []);
 
   const handleStartQuiz = (topic) => {
     setQuizTopic(topic);
@@ -93,6 +117,49 @@ export default function App() {
                   <path d="M2 21L23 12L2 3V10L17 12L2 14V21Z" fill="white"/>
                 </svg>
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* AWS Buckets Section */}
+        <div className="buckets-section">
+          <h3>AWS S3 Buckets</h3>
+          {loading && <p>Loading...</p>}
+          {error && (
+            <div className="error-container">
+              <h4>Error</h4>
+              <pre>{error}</pre>
+            </div>
+          )}
+          {buckets && (
+            <div>
+              {buckets.buckets && buckets.buckets.length > 0 ? (
+                <ul className="buckets-list">
+                  {buckets.buckets.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No buckets found or access denied.</p>
+              )}
+            </div>
+          )}
+          
+          {/* Quiz Links */}
+          <div className="quiz-links">
+            <p>Quiz</p>
+            <Link href="/quiz">Quiz test</Link>
+            <Link href="/multiplayer">Multiplayer test</Link>
+            <div className="quiz-id-input">
+              <input 
+                type="text" 
+                placeholder="Enter quiz ID"
+                onChange={(e) => setQuizId(e.target.value)}
+                className="quiz-id-field"
+              />
+              <Link href={`/quiz?id=${quizId}`}>
+                <button className="quiz-go-button">Go to Quiz</button>
+              </Link>
             </div>
           </div>
         </div>
