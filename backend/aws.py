@@ -2,6 +2,8 @@ import boto3
 import io
 import os
 import json
+import random
+import string
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv, find_dotenv
 
@@ -16,8 +18,19 @@ else:
 
 def save_to_s3(data: any, key: str,):
     try:
+        
         jsonFile = json.dumps(data)
         s3_client = boto3.client("s3",region_name=AWS_REGION)
+        valid_key = False
+        while not valid_key:
+            key = ''.join(random.choices(string.ascii_letters, k=16))
+            try:
+                s3_client.head_object(Bucket="questionbankaristotle",Key=key)
+            except ClientError as e:
+                if e.response['Error']['Code'] == "404":
+                    valid_key = True
+                else:
+                    return f"ERROR: {e}"
         body = io.BytesIO(jsonFile.encode("utf-8"))
         s3_client.put_object(Bucket="question-bank-aristotle", Key=key, Body=body.getvalue())
         return {"ok": True, "key": key}
@@ -52,7 +65,7 @@ def generate_mcq(num_questions : int, input_file= "", prompt = ""):
 
     body = {
         "inferenceConfig" : {
-            "maxTokens": 2048,
+            "maxTokens": 512,
             "temperature": 0.5,
             "topP": 0.9
         },

@@ -87,20 +87,9 @@ def generate_mcq():
 @app.route("/api/save", methods=["POST"])
 def save():
     try:
-        key = request.headers.get("X-Key")
-        if not key:
-            return jsonify({"error": "Missing X-Key header"}), 400
-
-        data = request.get_json(silent=True)
-        if data is None:
-            return jsonify({"error": "Missing JSON body"}), 400
-
-        result = aws.save_to_s3(data, key)
-        # aws.save_to_s3 now returns a dict with ok or error
-        if isinstance(result, dict) and result.get('ok'):
-            return jsonify({"ok": True, "key": key}), 200
-        else:
-            return jsonify({"error": result}), 500
+        data = request.get_json()
+        return  aws.save_to_s3(data)
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
