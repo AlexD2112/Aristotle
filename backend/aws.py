@@ -1,83 +1,242 @@
 import boto3
-import io
 import os
 import json
+import uuid
+from typing import Any, Optional
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 AWS_REGION = "us-east-1"
 
-def save_to_s3(data: any, key: str,):
-    try:
-        jsonFile = json.dumps(data)
-        s3_client = boto3.client("s3",region_name=AWS_REGION)
-        body = io.BytesIO(jsonFile.encode("utf-8"))
-        s3_client.put_object(Bucket="question-bank-aristotle", Key=key, Body=body.getvalue())
-    except Exception as e:
-        return f"ERROR: {e}"
+dotenv_path = find_dotenv()
+if dotenv_path:
+    load_dotenv(dotenv_path)
+    print(f"Loaded .env from: {dotenv_path}")
+else:
+    print("No .env file found (falling back to shell environment / instance role)")
 
-def generate_mcq(num_questions : int, input_file= "", prompt = ""):
-    load_dotenv()
-    # Create a Bedrock Runtime client in the AWS Region of your choice.
-    client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+def save_to_s3(data: Any, filename: Optional[str] = None, bucket_name: Optional[str] = None, key: Optional[str] = None):
+    """Save JSON-serializable `data` to S3.
 
-    model_id = "amazon.nova-micro-v1:0"
+    Parameters:
+      - data: object to save (will be json.dumps)
+      - filename: optional friendly filename to include in ContentDisposition and metadata
+      - bucket_name: optional S3 bucket (falls back to QUESTIONBANK_BUCKET env or default)
+      - key: optional explicit S3 key. If not provided one will be generated under questionbank/
 
-    file_text = ''
-    if input_file != "":
-        with open(input_file, "r", encoding="utf-8") as f:
-            file_text = f.read()
-    
-    prompt = f"""Based on the {'given prompt' if input_file == '' else 'uploaded lecture material'}, generate {num_questions} questions in this JSON format:
-    {{
-    "type": "multiple-choice",
-    "question": "The correct answer is C.",
-    "options": ["A: Option A", "B: Option B", "C: Option C", "D: Option D"],
-    "answer": [2],
-    "explanation": "The correct answer is C because …"
-    }}
-    The "answer" field should correspond to the index (or indices) in the options array that corresponds to the right answer
-    Ensure that your response is in correct JSON format (INCLUDE NO EXTRA TEXT) as your output will be fed directly into code.
-    {prompt if input_file == "" else file_text}
+    Returns: { ok: True, key: <s3-key>, bucket: <bucket> } or { ok: False, error: msg }
     """
-
-
-    body = {
-        "inferenceConfig" : {
-            "maxTokens": 2048,
-            "temperature": 0.5,
-            "topP": 0.9
-        },
-        "messages": [
-            {
-                "role": "user",
-                "content": [{"text": prompt}],
-            }
-        ],
-    }
-
-
-    # Convert the native request to JSON.
-    request = json.dumps(body)
-
     try:
-        # Invoke the model with the request.
-        response = client.invoke_model(modelId=model_id, body=request)
+        bucket = bucket_name or os.getenv('QUESTIONBANK_BUCKET', 'questionbankaristotle')
+        json_text = json.dumps(data, ensure_ascii=False, indent=2)
+        s3_client = boto3.client('s3', region_name=AWS_REGION)
 
-    except (ClientError, Exception) as e:
-        return e.response
+        if not key:
+            # Use a readable prefix and a uuid4-based filename for easy lookup and low chance of collision
+            key = f"questionbank/questions-{uuid.uuid4().hex}.json"
 
-    # Decode the response body.
-    model_response = json.loads(response["body"].read())
+        # Provide a ContentDisposition so browsers download a friendly filename when appropriate
+        content_disposition = None
+        if filename:
+            # sanitize filename minimally
+            safe_fn = ''.join(c for c in filename if c.isalnum() or c in (' ', '.', '-', '_')).strip()
+            content_disposition = f'attachment; filename="{safe_fn}"'
 
-    # Extract and print the response text.
-    return model_response["output"]["message"]["content"][0]["text"]
-    
+        put_args = {
+            'Bucket': bucket,
+            'Key': key,
+            'Body': json_text.encode('utf-8'),
+            'ContentType': 'application/json'
+        }
+        if content_disposition:
+            put_args['ContentDisposition'] = content_disposition
+
+        s3_client.put_object(**put_args)
+        return {'ok': True, 'key': key, 'bucket': bucket}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+class Bedrock:
+
+    def __init__(self):
+        load_dotenv()
+        self.model_id = "amazon.nova-micro-v1:0"
+        # Create a Bedrock Runtime client in the AWS Region of your choice.
+        self.client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+
+    def generate_desc(self, prompt=""):
+        body = {
+            "inferenceConfig" : {
+                "maxTokens": 512,
+                "temperature": 0.5,
+                "topP": 0.9
+            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": f"Generate a short, one-sentence description of the following topic: {prompt}"}],
+                }
+            ],
+        }
+        try:
+            response = self.client.invoke_model(modelId=self.model_id, body=json.dumps(body))
+            # Decode the response body.
+            model_response = json.loads(response["body"].read())
+
+            # Extract and print the response text.
+            text = model_response["output"]["message"]["content"][0]["text"]
+            return text
+        except (ClientError, Exception) as e:
+            print(e)
+            # Surface full exception information for debugging
+            resp = getattr(e, 'response', None)
+            print("Bedrock invoke failed:")
+            try:
+                print(resp)
+            except Exception:
+                print(str(e))
+            return prompt
+
+
+    #Parse response. Takes self, an input block of text, and an array of arrays. Each element in the
+    #Array is a triple containing a name, a description, and a type of each expected return val
+    #Returns a json parsed with nova-micro of the response
+    def parse_response(self, input_text: str, expected_output: list):
+        prompt = f"""Based on the following input text, extract the relevant information and return it in JSON format with the following fields: {', '.join([f'{name} ({type_}) - {desc}' for name, desc, type_ in expected_output])}.
+        Input Text: {input_text}
+        Ensure that your response is in correct JSON format (INCLUDE NO EXTRA TEXT) as your output will be fed directly into code.
+        """
+
+        body = {
+            "inferenceConfig" : {
+                "maxTokens": 10000,
+                "temperature": 0.5,
+                "topP": 0.9
+            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+        }
+
+
+        # Convert the native request to JSON.
+        request = json.dumps(body)
+
+        try:
+            # Invoke the model with the request.
+            print(f"Invoking model {self.model_id} with body length={len(request)}")
+            response = self.client.invoke_model(modelId=self.model_id, body=request)
+
+        except (ClientError, Exception) as e:
+
+            # Surface full exception information for debugging
+            resp = getattr(e, 'response', None)
+            print("Bedrock invoke failed:")
+            try:
+                print(resp)
+            except Exception:
+                print(str(e))
+            # Return a structured error so callers can see details
+            return {'Error': resp.get('Error') if resp and isinstance(resp, dict) and 'Error' in resp else {'Message': str(e), 'Code': getattr(e, 'code', None)}, 'ResponseMetadata': resp.get('ResponseMetadata') if resp and isinstance(resp, dict) and 'ResponseMetadata' in resp else None, 'message': str(e)}
+
+        # Decode the response body.
+        model_response = json.loads(response["body"].read())
+
+        # Extract and print the response text.
+        text = model_response["output"]["message"]["content"][0]["text"]
+
+        try:
+            parsed = json.loads(text)
+            return parsed
+        except Exception:
+            # fallback: return raw text (client can handle it) or split into lines
+            return {"raw": text}
+
+    def generate_mcq(self, num_questions : int, input_file= "", prompt = ""):
+        
+
+        file_text = ''
+        if input_file != "":
+            with open(input_file, "r", encoding="utf-8") as f:
+                file_text = f.read()
+        
+        prompt = f"""Based on the {'given prompt' if input_file == '' else 'uploaded lecture material'}, generate {num_questions} questions in this JSON format:
+        {{
+        "type": "multiple-choice",
+        "question": "The correct answer is C.",
+        "options": ["A: Option A", "B: Option B", "C: Option C", "D: Option D"],
+        "answer": [2],
+        "explanation": "The correct answer is C because …"
+        }}
+        The "answer" field should correspond to the index (or indices) in the options array that corresponds to the right answer
+        Ensure that your response is in correct JSON format (INCLUDE NO EXTRA TEXT) as your output will be fed directly into code.
+        {prompt if input_file == "" else file_text}
+        """
+
+
+        body = {
+            "inferenceConfig" : {
+                "maxTokens": 10000,
+                "temperature": 0.5,
+                "topP": 0.9
+            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+        }
+
+
+        # Convert the native request to JSON.
+        request = json.dumps(body)
+
+        try:
+            # Invoke the model with the request.
+            print(f"Invoking model {self.model_id} with body length={len(request)}")
+            response = self.client.invoke_model(modelId=self.model_id, body=request)
+
+        except (ClientError, Exception) as e:
+            
+            # Surface full exception information for debugging
+            resp = getattr(e, 'response', None)
+            print("Bedrock invoke failed:")
+            try:
+                print(resp)
+            except Exception:
+                print(str(e))
+            # Return a structured error so callers can see details
+            return {'Error': resp.get('Error') if resp and isinstance(resp, dict) and 'Error' in resp else {'Message': str(e), 'Code': getattr(e, 'code', None)}, 'ResponseMetadata': resp.get('ResponseMetadata') if resp and isinstance(resp, dict) and 'ResponseMetadata' in resp else None, 'message': str(e)}
+
+        # Decode the response body.
+        model_response = json.loads(response["body"].read())
+
+        # Extract and print the response text.
+        text = model_response["output"]["message"]["content"][0]["text"]
+
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return {"questions": parsed}
+            if isinstance(parsed, dict) and parsed.get("questions"):
+                return {"questions": parsed["questions"]}
+            # if dict but not the expected shape, return it as-is
+            return parsed
+        except Exception:
+            # fallback: return raw text (client can handle it) or split into lines
+            return {"raw": text}
+        
 
 
 def main():
-    n = int(input("Enter the number of questions you want to use: "))
-    print(generate_mcq(n, input_file="Lecture_notes.txt"))
+    bedrock = Bedrock()
+    #n = int(input("Enter the number of questions you want to use: "))
+    #print(bedrock.generate_mcq(n, input_file="Lecture_notes.txt"))
+    print(bedrock.generate_desc("Cookies"))
 
 if __name__ == "__main__":
     main()

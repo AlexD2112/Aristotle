@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
 import Chatbot from '../components/chatbot'
+import Link from 'next/link';
 
 export default function Home() {
   const [buckets, setBuckets] = useState(null)
@@ -25,7 +26,7 @@ export default function Home() {
   }, [])
 
   return (
-    <main style={{fontFamily: 'Arial, sans-serif', padding: 20}}>
+    <main className="main-container">
       <h1>Aristotle — Next.js frontend</h1>
       <p>Calls the Flask backend at <code>/api/aws/buckets</code> and shows result.</p>
 
@@ -52,7 +53,8 @@ export default function Home() {
           )}
         </div>
       )}
-      
+      <p>Quiz</p>
+      <Link href="/quiz">Quiz test</Link>
       <div style={{marginTop: '40px', borderTop: '2px solid #eee', paddingTop: '20px'}}>
         <h2>Learning Assistant</h2>
         <p>Chat with Aristotle to discuss topics and upload study materials.</p>

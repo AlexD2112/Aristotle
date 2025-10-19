@@ -74,13 +74,12 @@ Notes:
 
 ### Local test (no AWS required)
 
-The backend includes a small test that uses botocore Stubber to mock S3 calls (no network or AWS credentials required).
+The backend includes a small test that uses botocore Stubber to stub S3 calls for unit testing (no network or AWS credentials required).
 
 ```powershell
 # from repository root
 cd backend
 python -m pip install -r requirements.txt
-python test_moto.py
 ```
 
 Expected output:
