@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="$PROJECT_DIR$/frontend/components/ProfileButton.js">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/frontend/components/ProfileButton.js" />
+              <option name="originalContent" value="import Link from 'next/link';&#10;&#10;export default function ProfileButton({ initial = 'A' }) {&#10;  return (&#10;    &lt;Link&#10;      href=&quot;/profile&quot;&#10;      title=&quot;View profile&quot;&#10;      aria-label=&quot;Open profile&quot;&#10;      style={{&#10;        position: 'fixed',&#10;        right: 16,&#10;        top: 16,&#10;        zIndex: 9999,&#10;        display: 'inline-block',&#10;        cursor: 'pointer',&#10;        textDecoration: 'none',&#10;      }}&#10;    &gt;&#10;      &lt;span&#10;        style={{&#10;          display: 'inline-flex',&#10;          width: 40,&#10;          height: 40,&#10;          borderRadius: '50%',&#10;          background: '#8B5CF6',&#10;          alignItems: 'center',&#10;          justifyContent: 'center',&#10;          color: 'white',&#10;          fontWeight: 700,&#10;        }}&#10;        aria-hidden=&quot;true&quot;&#10;      &gt;&#10;        {initial}&#10;      &lt;/span&gt;&#10;    &lt;/Link&gt;&#10;  );&#10;}&#10;" />
+              <option name="updatedContent" value="import Link from 'next/link';&#10;import { useRouter } from 'next/router';&#10;&#10;export default function ProfileButton({ initial = 'A' }) {&#10;  const router = useRouter();&#10;&#10;  // Don't render the button on the profile page (or any sub-route like /profile/...)&#10;  // Router may be undefined during SSR; guard with typeof window check.&#10;  if (typeof window !== 'undefined') {&#10;    const path = window.location.pathname || '';&#10;    if (path.startsWith('/profile')) return null;&#10;  } else if (router &amp;&amp; router.pathname &amp;&amp; String(router.pathname).startsWith('/profile')) {&#10;    // In case router is available on the server side, also avoid rendering&#10;    return null;&#10;  }&#10;&#10;  return (&#10;    &lt;Link&#10;      href=&quot;/profile&quot;&#10;      title=&quot;View profile&quot;&#10;      aria-label=&quot;Open profile&quot;&#10;      style={{&#10;        position: 'fixed',&#10;        right: 16,&#10;        top: 16,&#10;        zIndex: 9999,&#10;        display: 'inline-block',&#10;        cursor: 'pointer',&#10;        textDecoration: 'none',&#10;      }}&#10;    &gt;&#10;      &lt;span&#10;        style={{&#10;          display: 'inline-flex',&#10;          width: 40,&#10;          height: 40,&#10;          borderRadius: '50%',&#10;          background: '#8B5CF6',&#10;          alignItems: 'center',&#10;          justifyContent: 'center',&#10;          color: 'white',&#10;          fontWeight: 700,&#10;        }}&#10;        aria-hidden=&quot;true&quot;&#10;      &gt;&#10;        {initial}&#10;      &lt;/span&gt;&#10;    &lt;/Link&gt;&#10;  );&#10;}" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>

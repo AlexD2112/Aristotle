@@ -6,3 +6,5 @@ moto
 pytest
 langchain-aws
 PyPDF2
+requests
+python-jose

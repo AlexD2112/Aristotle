@@ -17,10 +17,15 @@ export default function App() {
 
   useEffect(() => {
     const fetchBuckets = async () => {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:6767';
       try {
         const res = await fetch(`${backendUrl}/api/aws/buckets`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          // set error state instead of throwing so linters won't warn about a local throw
+          setError(`HTTP ${res.status}`);
+          setLoading(false);
+          return;
+        }
         const data = await res.json();
         setBuckets(data);
       } catch (err) {
@@ -75,7 +80,7 @@ export default function App() {
       {/* Main content */}
       <div className="main-content">
         {/* Header with logo and title */}
-        <div className="header-section">
+        <div className="header-section" style={{position: 'relative'}}>
           <div className="logo">
             <div className="logo-icon">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none">

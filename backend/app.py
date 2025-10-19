@@ -1,4 +1,5 @@
 import aws
+import auth
 import boto3
 import os
 import PyPDF2
@@ -462,6 +463,77 @@ def generate_reply():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/profile', methods=['GET'])
+def get_profile():
+    """Return the current user's profile JSON from S3 (user/{sub}.json).
+
+    Requires Authorization: Bearer <id_token> header (Cognito ID token).
+    If the profile does not exist, returns a default profile skeleton (ok: True, data: {...}).
+    """
+    token = request.headers.get('Authorization') or request.headers.get('X-Id-Token')
+    if not token:
+        return jsonify({'ok': False, 'error': 'Missing Authorization header'}), 401
+    try:
+        claims = auth.verify_cognito_jwt(token)
+        sub = claims.get('sub') or claims.get('username') or claims.get('cognito:username')
+        if not sub:
+            return jsonify({'ok': False, 'error': 'Unable to determine user id from token'}), 400
+        global s3
+        if s3 is None:
+            s3 = aws.S3()
+        res = s3.load_user_profile(sub)
+        if not res.get('ok'):
+            # If profile not found, return a default skeleton so frontend can save it later
+            if res.get('error') == 404 or str(res.get('error')) == '404':
+                default_profile = {
+                    'sub': sub,
+                    'displayName': claims.get('name') or claims.get('email') or 'Learner',
+                    'email': claims.get('email', ''),
+                    'ownedDatasets': [],
+                    'sharedDatasets': [],
+                    'sharedWith': []
+                }
+                return jsonify({'ok': True, 'data': default_profile, 'key': None}), 200
+            return jsonify({'ok': False, 'error': res.get('error')}), 500
+        return jsonify({'ok': True, 'data': res.get('data'), 'key': res.get('key'), 'bucket': res.get('bucket')}), 200
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+
+@app.route('/api/profile', methods=['POST'])
+def save_profile():
+    """Save the user's profile JSON to S3 under user/{sub}.json.
+
+    Requires Authorization: Bearer <id_token> header (Cognito ID token).
+    Expects JSON body containing profile fields. The server will enforce `sub` from the token.
+    """
+    token = request.headers.get('Authorization') or request.headers.get('X-Id-Token')
+    if not token:
+        return jsonify({'ok': False, 'error': 'Missing Authorization header'}), 401
+    try:
+        claims = auth.verify_cognito_jwt(token)
+        sub = claims.get('sub') or claims.get('username') or claims.get('cognito:username')
+        if not sub:
+            return jsonify({'ok': False, 'error': 'Unable to determine user id from token'}), 400
+        payload = request.get_json(silent=True) or {}
+        # Ensure the profile's sub is the authenticated subject
+        payload['sub'] = sub
+        # If email/displayName missing, default from token
+        if not payload.get('displayName'):
+            payload['displayName'] = claims.get('name') or claims.get('email') or 'Learner'
+        if not payload.get('email'):
+            payload['email'] = claims.get('email', '')
+
+        global s3
+        if s3 is None:
+            s3 = aws.S3()
+        res = s3.save_user_profile(sub, payload)
+        if not res.get('ok'):
+            return jsonify({'ok': False, 'error': res.get('error')}), 500
+        return jsonify({'ok': True, 'key': res.get('key'), 'bucket': res.get('bucket')}), 200
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
 
 if __name__ == '__main__':
     # Development server

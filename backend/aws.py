@@ -100,6 +100,34 @@ class S3:
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
+    # New helpers for user profile objects saved under `user/{sub}.json`
+    def load_user_profile(self, sub: str, bucket_name: str = None):
+        try:
+            if not sub:
+                return {'ok': False, 'error': 'Missing subject id'}
+            bucket = bucket_name or os.getenv('QUESTIONBANK_BUCKET', 'questionbankaristotle')
+            key = f"user/{sub}.json"
+            response = self.s3_client.get_object(Bucket=bucket, Key=key)
+            data = json.loads(response['Body'].read().decode('utf-8'))
+            return {'ok': True, 'data': data, 'key': key, 'bucket': bucket}
+        except Exception as e:
+            # AWS raises a ClientError for missing key; detect and return 404 for frontend convenience
+            if isinstance(e, ClientError) and e.response.get('Error', {}).get('Code') == 'NoSuchKey':
+                return {'ok': False, 'error': 404}
+            return {'ok': False, 'error': str(e)}
+
+    def save_user_profile(self, sub: str, data: any, bucket_name: str = None):
+        try:
+            if not sub:
+                return {'ok': False, 'error': 'Missing subject id'}
+            bucket = bucket_name or os.getenv('QUESTIONBANK_BUCKET', 'questionbankaristotle')
+            key = f"user/{sub}.json"
+            json_text = json.dumps(data, ensure_ascii=False, indent=2)
+            self.s3_client.put_object(Bucket=bucket, Key=key, Body=json_text.encode('utf-8'), ContentType='application/json')
+            return {'ok': True, 'key': key, 'bucket': bucket}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
 class Bedrock:
 
     def __init__(self):
