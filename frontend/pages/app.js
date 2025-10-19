@@ -107,6 +107,8 @@ export default function App() {
                 value={userMessage}
                 onChange={(e) => setUserMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
+                onFocus={() => setShowChatbot(true)}
+                onClick={() => setShowChatbot(true)}
                 className="message-input"
               />
               <button 
