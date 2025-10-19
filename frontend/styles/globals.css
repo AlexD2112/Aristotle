@@ -233,13 +233,22 @@ body {
   margin-bottom: 30px;
 }
 
-.answer {
+.answers-container {
   display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.answer {
+  flex: 1;
+  display: inline-flex;
   align-items: center;
   padding: 20px;
   background-color: rgba(255, 255, 255, 0.1);
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 15px;
+  color: white;
   cursor: pointer;
   transition: all 0.3s ease;
   text-align: left;
