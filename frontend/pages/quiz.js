@@ -93,43 +93,93 @@ export default function Quiz() {
 
     if (showResult) {
         return (
-            <div className="p-4">
-                <h2>Quiz Complete!</h2>
-                <p>Your score: {score} out of {quizData.questions.length}</p>
+            <div className="quiz-page">
+                <div className="quiz-card result-card">
+                    <div className="result-content">
+                        <h2 className="result-title">Quiz Complete!</h2>
+                        <div className="score-display">
+                            <span className="score-number">{score}</span>
+                            <span className="score-total">out of {quizData.questions.length}</span>
+                        </div>
+                        <div className="score-percentage">
+                            {Math.round((score / quizData.questions.length) * 100)}% Correct
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="p-4">
-            <h2>{quizData.name || "Quiz"}</h2>
-            <div>Time left: {timeLeft}s</div>
-            <div className="my-4">
-                <h3>Question {currentQuestion + 1}: {quizData.questions[currentQuestion].question}</h3>
-                <div className="space-y-2">
-                    {quizData.questions[currentQuestion].options.map((option, index) => (
-                        <button
-                            key={index}
-                            onClick={() => !isAnswered && handleAnswer(index)}
-                            className={`block w-full p-2 text-left border ${
-                                isAnswered
-                                     ? index === quizData.questions[currentQuestion].answer[0]
-                                        ? 'answer correct'
-                                        : selectedOption === index
-                                        ? 'answer incorrect'
-                                        : 'answer'
-                                    : 'answer'
-                            }`}
-                        >
-                            {option}
-                        </button>
-                    ))}
-                </div>
-                {isAnswered && (
-                    <div className="mt-4">
-                        {quizData.questions[currentQuestion].explanation}
+        <div className="quiz-page">
+            {/* Header */}
+            <div className="quiz-header">
+                <div className="quiz-title">{quizData.name || "Quiz"}</div>
+                
+                <div className="progress-section">
+                    <div className="score-badge">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="white"/>
+                        </svg>
+                        {score}
                     </div>
-                )}
+                    <div className="progress-text">{Math.round((currentQuestion / quizData.questions.length) * 100)}% Complete</div>
+                    <div className="progress-bar">
+                        <div className={`progress-fill progress-${Math.round((currentQuestion / quizData.questions.length) * 100)}`}></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Timer */}
+            <div className="timer-section">
+                <div className={`timer ${timeLeft <= 10 ? 'timer-warning' : ''}`}>
+                    Time left: {timeLeft}s
+                </div>
+            </div>
+
+            {/* Main Quiz Card */}
+            <div className="quiz-card">
+                <div className="question-section">
+                    <div className="question-decorations">
+                        <svg className="decoration-left" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#FF6B9D"/>
+                        </svg>
+                        <h2 className="question-text">
+                            Question {currentQuestion + 1}: {quizData.questions[currentQuestion].question}
+                        </h2>
+                        <svg className="decoration-right" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#8B5CF6"/>
+                        </svg>
+                    </div>
+                    
+                    <div className="answers-grid">
+                        {quizData.questions[currentQuestion].options.map((option, index) => (
+                            <button
+                                key={index}
+                                onClick={() => !isAnswered && handleAnswer(index)}
+                                className={`answer-button answer-${index} ${
+                                    isAnswered
+                                        ? index === quizData.questions[currentQuestion].answer[0]
+                                            ? 'correct'
+                                            : selectedOption === index
+                                            ? 'incorrect'
+                                            : 'neutral'
+                                        : 'default'
+                                }`}
+                            >
+                                {option}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    {isAnswered && (
+                        <div className="explanation-section">
+                            <div className="explanation-text">
+                                {quizData.questions[currentQuestion].explanation}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );}
