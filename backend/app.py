@@ -17,7 +17,7 @@ if dotenv_path:
     print(f"Loaded .env from: {dotenv_path}")
 else:
     print("No .env file found (falling back to shell environment / instance role)")
-
+bedrock = None
 app = Flask(__name__)
 # Enables cross-origin resource sharing support
 # (Allows app to make requests to other domains)
@@ -44,7 +44,7 @@ def debug_env():
         'AWS_ACCESS_KEY_ID_present': bool(os.getenv('AWS_ACCESS_KEY_ID')),
         'AWS_SECRET_ACCESS_KEY_present': bool(os.getenv('AWS_SECRET_ACCESS_KEY')),
         'AWS_REGION': os.getenv('AWS_REGION') or None,
-        'FLASK_ENV': os.getenv('FLASK_ENV') or "development"
+        'FLASK_ENV': os.getenv('FLASK_ENV')
     }
     return jsonify(present), 200
 
@@ -64,9 +64,27 @@ def debug_identity():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/generate_desc', methods=["GET"])
+def generate_desc():
+    try:
+        global bedrock
+        if bedrock is None:
+            bedrock = aws.Bedrock()
+
+        prompt = request.headers.get("X-Prompt")
+        app.logger.info(f"Generating description for prompt: {prompt}")
+        return jsonify({"description":bedrock.generate_desc(prompt=prompt)}),200
+    except Exception as e:
+        return jsonify({"error": e}), 500
+
 @app.route('/api/generate_mcq', methods=["GET", "POST"])
 def generate_mcq():
     try:
+        global bedrock
+        if bedrock is None:
+            bedrock = aws.Bedrock()
+
+
         # Support POST with JSON body for better client semantics, fall back to headers for GET
         if request.method == 'POST' or request.is_json:
             data = request.get_json(silent=True) or {}
@@ -76,7 +94,7 @@ def generate_mcq():
             num_questions = int(request.headers.get("X-Num-Questions", 1))
             topic = request.headers.get("X-Topic")
 
-        result = aws.generate_mcq(num_questions, prompt=topic)
+        result = bedrock.generate_mcq(num_questions, prompt=topic)
 
         # If aws returned an error dict, surface it
         if isinstance(result, dict) and result.get('Error'):

@@ -139,6 +139,23 @@ export default function Chatbot() {
       setIsTyping(true);
       pushBot('Generating questions — this may take a few seconds...');
 
+      // Fetch description from backend
+      let description = '';
+      try {
+        const descResp = await fetchJSON(`${backendBase}/api/generate_desc`, {
+          method: 'GET',
+          headers: { 'X-Prompt': promptToUse }
+        });
+        if (descResp?.ok) {
+          const descData = await descResp.json();
+          description = descData?.description || '';
+        } else {
+          description = '';
+        }
+      } catch (e) {
+        description = '';
+      }
+
       const body = { num_questions: numQuestions, prompt: promptToUse };
       const resp = await fetchJSON(`${backendBase}/api/generate_mcq`, {
         method: 'POST',
@@ -172,6 +189,7 @@ export default function Chatbot() {
       if (questions.length > numQuestions) {
         // eslint-disable-next-line no-console
         console.log(`Overshoot: requested ${numQuestions}, got ${questions.length}. Trimming.`);
+        pushBot(`TRIMMING - Original questions: ${questions}`)
         questions = questions.slice(0, numQuestions);
         pushBot(`The model produced more than ${numQuestions}. I trimmed to ${numQuestions}.`);
       }
@@ -180,6 +198,8 @@ export default function Chatbot() {
       pushBot(`I generated ${questions.length} questions. Saving them to questionbank...`);
 
       const savePayload = {
+        name: promptToUse || 'quiz',
+        description: description || 'No description provided',
         questions,
         metadata: {
           source: sourceLabel || promptToUse || 'user-prompt',
@@ -208,7 +228,7 @@ export default function Chatbot() {
       }
 
       const saveData = await saveResp.json();
-  pushBot(`Saved to questionbank as: ${saveData.key || filename}`);
+      pushBot(`Saved to questionbank as: ${saveData.key || filename}`);
 
       // Batch-append all generated questions to the chat to avoid many setState calls
       const questionMessages = questions.map((q, i) => {
@@ -234,16 +254,16 @@ export default function Chatbot() {
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-    if (isTyping) return; // guard against double submit
+    if (isTyping) return; // prevent double submit
     const text = input.trim();
     if (!text) return;
 
-    // If we're awaiting a prompt (user chose to type a prompt), capture it
+    // -------------------- Awaiting quiz prompt --------------------
     if (awaitingPrompt) {
       setMessages(prev => [
         ...prev,
         {
-          id: (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`),
+          id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
           role: 'user',
           content: text
         }
@@ -251,18 +271,19 @@ export default function Chatbot() {
       setPendingPrompt(text);
       setInput('');
       setAwaitingPrompt(false);
+
       // Ask for number of questions next
       pushBot('How many questions would you like me to generate? Please enter a number.');
       setAwaitingNumQuestions(true);
       return;
     }
 
-    // If we're awaiting number of questions, parse and call generate
+    // -------------------- Awaiting number of questions --------------------
     if (awaitingNumQuestions) {
       const n = parseInt(text, 10);
       setMessages(prev => [
         ...prev,
-        { id: (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`), role: 'user', content: text }
+        { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, role: 'user', content: text }
       ]);
       setInput('');
       if (isNaN(n) || n <= 0) {
@@ -273,7 +294,7 @@ export default function Chatbot() {
       // Determine prompt source
       if (materialBased && userData.materials && userData.materials.length > 0) {
         const mat = userData.materials[0];
-        const preview = (mat.content || '').slice(0, 4000); // trim to avoid huge prompts
+        const preview = (mat.content || '').slice(0, 4000); // trim large files
         const promptFromMaterial =
           `Create ${n} multiple-choice questions from the following study material:\n\n` +
           `Title: ${mat.filename}\nContent preview:\n${preview}`;
@@ -285,10 +306,10 @@ export default function Chatbot() {
       return;
     }
 
-    // Otherwise, default to normal chatbot conversation
+    // -------------------- Default chatbot message --------------------
     setMessages(prev => [
       ...prev,
-      { id: (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`), role: 'user', content: text }
+      { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, role: 'user', content: text }
     ]);
     setInput('');
     await handleChatbotPost(text);
