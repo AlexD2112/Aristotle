@@ -222,76 +222,93 @@ export default function JoinGamePage() {
   };
 
   return (
-    <div style={{ maxWidth: 600, margin: "2rem auto", textAlign: "center" }}>
+    <div className="multiplayer-container">
+      <h1 className="multiplayer-title">Multiplayer Quiz</h1>
+      <p className="multiplayer-subtitle">Join or create a quiz game with friends!</p>
+      
       <input
         type="text"
         placeholder="Display Name"
         value={name}
         onChange={(e) => setName(e.target.value)}
+        className="multiplayer-input"
       />
-      <h1>Join Game</h1>
-      <p>Join an existing quiz game by entering your details.</p>
 
       {!response && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <input
-            type="text"
-            placeholder="Game ID"
-            value={gameId}
-            onChange={(e) => setGameId(e.target.value)}
-          />
-          <button onClick={handleJoin} disabled={loading}>
-            {loading ? "Joining..." : "Join Game"}
-          </button>
-          <h1>CREATE GAME</h1>
-          <p>Create a game by entering the question bank ID:</p>
-          <input
-          type="text"
-          placeholder="Game ID"
-          value={qBankId}
-          onChange={(e) => setqBankId(e.target.value)}
-          ></input>
-          <button class="create" onClick={handleCreate} disabled={loading}>
-            {loading ? "Creating..." : "Create Game"}</button>
+        <div className="multiplayer-form">
+          <div className="multiplayer-section">
+            <h2>Join Game</h2>
+            <p>Join an existing quiz game by entering your details.</p>
+            <input
+              type="text"
+              placeholder="Game ID"
+              value={gameId}
+              onChange={(e) => setGameId(e.target.value)}
+              className="multiplayer-input"
+            />
+            <button 
+              onClick={handleJoin} 
+              disabled={loading}
+              className="multiplayer-button"
+            >
+              {loading ? "Joining..." : "Join Game"}
+            </button>
+          </div>
+
+          <div className="create-section">
+            <h1>CREATE GAME</h1>
+            <p>Create a game by entering the question bank ID:</p>
+            <input
+              type="text"
+              placeholder="Question Bank ID"
+              value={qBankId}
+              onChange={(e) => setqBankId(e.target.value)}
+              className="multiplayer-input"
+            />
+            <button 
+              onClick={handleCreate} 
+              disabled={loading}
+              className="multiplayer-button"
+            >
+              {loading ? "Creating..." : "Create Game"}
+            </button>
+          </div>
         </div>
       )}
   
-      {error && <p style={{ color: "red" }}>Error: {error}</p>}
+      {error && <div className="error-message">Error: {error}</div>}
 
       {response && (
-        <>
-          <p>Seconds per question:</p>
-          <input
-          type="number"
-          placeholder="Seconds per question"
-          defaultValue={20}
-          onChange={(e) => setSecPerQ(e.target.value)}
-          >
-          </input>
-          <button class="start" onClick={handleStart}>Start Game</button>
+        <div className="multiplayer-section">
+          <div className="start-section">
+            <p>Seconds per question:</p>
+            <input
+              type="number"
+              placeholder="Seconds per question"
+              defaultValue={20}
+              onChange={(e) => setSecPerQ(e.target.value)}
+              className="multiplayer-input"
+            />
+            <button 
+              onClick={handleStart}
+              className="multiplayer-button"
+            >
+              Start Game
+            </button>
+          </div>
+          
           <h2>Current Players</h2>
-          <div style={{ 
-            display: "flex", 
-            flexWrap: "wrap", 
-            gap: "1rem", 
-            justifyContent: "center",
-            padding: "1rem" 
-          }}>
+          <div className="players-grid">
             {players.map((player) => (
               <div
                 key={player.playerId}
-                style={{
-                  padding: "0.5rem 1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
-                className="player"
+                className="player-card"
               >
                 {player.name}
               </div>
             ))}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

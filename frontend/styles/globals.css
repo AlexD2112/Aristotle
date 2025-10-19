@@ -1436,3 +1436,219 @@ body {
     font-size: 1.3rem;
   }
 }
+
+/* Multiplayer Page Styles */
+.multiplayer-container {
+  max-width: 600px;
+  width: 90%;
+  margin: 2rem auto;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.multiplayer-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ec4899, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.multiplayer-subtitle {
+  color: #6b7280;
+  font-size: 1.1rem;
+  margin-bottom: 2rem;
+  font-weight: 400;
+}
+
+.multiplayer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.multiplayer-input {
+  padding: 1rem 1.5rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-family: 'Poppins', sans-serif;
+  transition: all 0.3s ease;
+  background: white;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+}
+
+.multiplayer-input:focus {
+  outline: none;
+  border-color: #a855f7;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+}
+
+.multiplayer-button {
+  background: linear-gradient(135deg, #ec4899, #a855f7);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3);
+  font-family: 'Poppins', sans-serif;
+}
+
+.multiplayer-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);
+}
+
+.multiplayer-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3);
+}
+
+.multiplayer-section {
+  background: white;
+  border-radius: 20px;
+  padding: 2rem;
+  margin: 2rem 0;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  animation: slideInUp 0.6s ease-out;
+}
+
+.multiplayer-section h2 {
+  color: #7c3aed;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.players-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  padding: 1rem 0;
+}
+
+.player-card {
+  background: linear-gradient(135deg, #f3e8ff, #e0e7ff);
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  color: #374151;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
+  transition: all 0.3s ease;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.player-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.25);
+}
+
+.error-message {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 1rem;
+  margin: 1rem 0;
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.success-message {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 1rem;
+  margin: 1rem 0;
+  color: #166534;
+  font-weight: 500;
+}
+
+.section-divider {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+  margin: 2rem 0;
+  border: none;
+}
+
+.create-section {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #f59e0b;
+  border-radius: 15px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.create-section h1 {
+  color: #92400e;
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+}
+
+.create-section p {
+  color: #a16207;
+  margin-bottom: 1rem;
+}
+
+.start-section {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+  border: 1px solid #3b82f6;
+  border-radius: 15px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.start-section p {
+  color: #1e40af;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+/* Responsive design for multiplayer */
+@media (max-width: 768px) {
+  .multiplayer-container {
+    width: 95%;
+    padding: 1rem;
+  }
+  
+  .multiplayer-title {
+    font-size: 2rem;
+  }
+  
+  .players-grid {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .player-card {
+    width: 100%;
+    max-width: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  .multiplayer-title {
+    font-size: 1.8rem;
+  }
+  
+  .multiplayer-section {
+    padding: 1.5rem;
+  }
+  
+  .multiplayer-button {
+    padding: 0.8rem 1.5rem;
+    font-size: 0.9rem;
+  }
+}
