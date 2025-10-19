@@ -497,3 +497,101 @@ body {
 .restart-button:hover {
   background: #0056b3;
 }
+
+/* Quiz View Container */
+.quiz-view-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* Redirect Page Styles */
+.redirect-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(180deg, #FFF0F3 0%, #F0F8FF 100%);
+  font-family: 'Inter', sans-serif;
+}
+
+.redirect-content {
+  text-align: center;
+  color: #6B7280;
+}
+
+.redirect-link {
+  color: #FF6B9D;
+  text-decoration: none;
+}
+
+.redirect-link:hover {
+  text-decoration: underline;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .aristotle-home {
+    padding: 10px;
+  }
+  
+  .main-content {
+    max-width: 100%;
+    padding: 0 10px;
+  }
+  
+  .title {
+    font-size: 2.5rem;
+  }
+  
+  .chat-container {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .message-bubble {
+    max-width: 90%;
+    padding: 15px 20px;
+  }
+  
+  .input-wrapper {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .send-button {
+    width: 100%;
+    height: 48px;
+    border-radius: 25px;
+  }
+  
+  .quiz-view-container {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .title {
+    font-size: 2rem;
+  }
+  
+  .tagline {
+    font-size: 1rem;
+  }
+  
+  .chat-container {
+    padding: 15px;
+  }
+  
+  .logo-icon {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .redirect-container {
+    padding: 20px;
+  }
+}
