@@ -25,7 +25,7 @@ export default function Home() {
   }, [])
 
   return (
-    <main style={{fontFamily: 'Arial, sans-serif', padding: 20}}>
+    <main className="main-container">
       <h1>Aristotle — Next.js frontend</h1>
       <p>Calls the Flask backend at <code>/api/aws/buckets</code> and shows result.</p>
 
