@@ -8,6 +8,15 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
 import uuid
+import dynamodb_helper as db
+
+# import aws_cdk as cdk
+# from lib.quiz_stack import QuizRealtimeStack
+
+# app = cdk.App()
+# QuizRealtimeStack(app, "QuizRealtimeStack")
+# app.synth()
+
 from werkzeug.utils import secure_filename
 
 
@@ -78,10 +87,14 @@ def generate_mcq():
 def save():
     try:
         key = request.headers.get("X-Key")
-        data = request.get_json()
-        aws.save_to_s3(data)
+        data = request.get_json(silent=True) or {}
+        result = aws.save_to_s3(data, key=key)  # update aws.save_to_s3 to accept key
+        if isinstance(result, str) and result.startswith("ERROR"):
+            return jsonify({"error": result}), 500
+        return jsonify({"ok": True}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Failed to save"}), 500
+
 
 
 # add routes for chatbot and uploading material
@@ -202,6 +215,36 @@ def upload_material():
     
     return jsonify({'error': 'Invalid file type'}), 400
 
+
+@app.route('/api/game/create', methods=['GET','POST'], endpoint='game_create')
+def game_create_route():
+    host_id = request.args.get('hostId') or request.form.get('hostId') or 'host123'
+    seconds = int(request.args.get('secondsPerQuestion') or request.form.get('secondsPerQuestion') or 20)
+    
+    game_id = db.create_game(host_id, seconds)
+    game_id = db.create_game(host_id, seconds)
+    return jsonify({'gameId': game_id}), 201
+
+
+
+@app.route('/api/game/<game_id>/join', methods=['POST'], endpoint='game_join')
+def game_join_route(game_id):
+    data = request.get_json(silent=True)
+    if not data:
+        raw = (request.data or b'').decode('utf-8', errors='ignore')
+        try:
+            data = json.loads(raw) if raw.strip() else {}
+        except Exception:
+            return jsonify({"error": "Invalid JSON", "raw": raw}), 400
+
+    player_id = data.get('playerId')
+    name = data.get('name')
+    if not player_id or not name:
+        return jsonify({"error": "playerId and name are required"}), 400
+
+    item = db.join_game(game_id, player_id, name)
+    return jsonify({'player': item}), 200
+
 def allowed_file(filename):
     """Check if file type is allowed"""
     ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx'}
@@ -233,4 +276,5 @@ if __name__ == '__main__':
     host = os.getenv('FLASK_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_PORT', 6767))
     debug = os.getenv('FLASK_ENV', 'development') == 'development'
-    app.run(host=host, port=port, debug=debug)
+    #app.run(host=host, port=port, debug=debug)
+    app.run(host='0.0.0.0', port=int(os.getenv('FLASK_PORT', 6767)), debug=True)

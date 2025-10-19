@@ -1,0 +1,69 @@
+// This file is not used in any program, but used as a reference to
+// understand the json data in database entries
+
+// Game
+{
+  "pk": "GAME#abc123",
+  "sk": "GAME#abc123",
+  "entity": "GAME",
+  "status": "LOBBY",                
+  "hostId": "user_42",
+  "currentQ": 0,
+  "createdAt": "2025-10-18T23:00:00Z",
+  "settings": { "secondsPerQuestion": 20 }
+}
+
+// Player
+{
+  "pk": "GAME#abc123",
+  "sk": "PLAYER#p_007",
+  "entity": "PLAYER",
+  "gameId": "abc123",
+  "playerId": "p_007",
+  "name": "Tony",
+  "score": 0,
+  "joinedAt": "2025-10-18T23:01:22Z",
+
+  // (optional for GSI1 if you want reverse lookups)
+  "gsi1pk": "PLAYER#p_007",
+  "gsi1sk": "GAME#abc123"
+}
+
+// Question
+{
+  "pk": "GAME#abc123",
+  "sk": "QUESTION#0",
+  "entity": "QUESTION",
+  "gameId": "abc123",
+  "index": 0,
+  "type": "multiple-choice",
+  "question": "Which letter is correct?",
+  "options": ["A: ...", "B: ...", "C: ...", "D: ..."],
+  "answer": [2],                      // keep server-side only
+  "explanation": "Because ..."
+}
+
+// Answer
+{
+  "pk": "GAME#abc123",
+  "sk": "ANSWER#0#p_007",
+  "entity": "ANSWER",
+  "gameId": "abc123",
+  "qIndex": 0,
+  "playerId": "p_007",
+  "selected": [2],
+  "isCorrect": true,
+  "submittedAt": "2025-10-18T23:02:11Z",
+  // (optional) TTL to auto-expire answer history after N days
+  "ttl": 1767139200
+}
+
+
+// Scoreboard
+{
+  "pk": "GAME#abc123",
+  "sk": "SCOREBOARD",
+  "entity": "SCOREBOARD",
+  "gameId": "abc123",
+  "topN": [{"playerId":"p_007","score":10}]
+}

@@ -1,0 +1,71 @@
+scalar AWSDateTime
+
+type Game {
+  gameId: ID!
+  status: String!
+  hostId: String!
+  currentQ: Int!
+  createdAt: AWSDateTime!
+  settings: GameSettings
+}
+
+type GameSettings {
+  secondsPerQuestion: Int
+}
+
+type Player {
+  gameId: ID!
+  playerId: ID!
+  name: String!
+  score: Int!
+  joinedAt: AWSDateTime!
+}
+
+type Question {
+  gameId: ID!
+  index: Int!
+  type: String!
+  question: String!
+  options: [String!]!
+  explanation: String
+}
+
+type AnswerResult {
+  gameId: ID!
+  playerId: ID!
+  qIndex: Int!
+  isCorrect: Boolean!
+  newScore: Int!
+}
+
+type Query {
+  getGame(gameId: ID!): Game
+  listPlayers(gameId: ID!): [Player!]!
+  listQuestions(gameId: ID!): [Question!]!  # NOTE: do NOT expose answers here
+}
+
+type Mutation {
+  createGame(secondsPerQuestion: Int): Game!
+  joinGame(gameId: ID!, name: String!): Player!
+  startGame(gameId: ID!): Game!
+  nextQuestion(gameId: ID!): Game!
+  endGame(gameId: ID!): Game!
+  submitAnswer(gameId: ID!, qIndex: Int!, selected: [Int!]!): AnswerResult!
+}
+
+type Subscription {
+  onPlayerJoined(gameId: ID!): Player
+    @aws_subscribe(mutations: ["joinGame"])
+
+  onGameStarted(gameId: ID!): Game
+    @aws_subscribe(mutations: ["startGame"])
+
+  onQuestionAdvanced(gameId: ID!): Game
+    @aws_subscribe(mutations: ["nextQuestion"])
+
+  onScoreUpdated(gameId: ID!): AnswerResult
+    @aws_subscribe(mutations: ["submitAnswer"])
+
+  onGameEnded(gameId: ID!): Game
+    @aws_subscribe(mutations: ["endGame"])
+}
