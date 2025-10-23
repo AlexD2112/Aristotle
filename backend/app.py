@@ -36,7 +36,15 @@ s3 = None
 app = Flask(__name__)
 # Enables cross-origin resource sharing support
 # (Allows app to make requests to other domains)
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "http://localhost:3000",
+            "https://studyaristotle.com",
+            "https://www.studyaristotle.com"
+        ]
+    }
+})
 
 
 @app.route('/api/start_game',methods=["POST"])
